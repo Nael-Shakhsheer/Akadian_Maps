@@ -1,0 +1,503 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-24T03:09:51Z",
+    "timestamp_areas_base": "2026-10-24T01:11:36Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 575981123,
+  "lat": 38.8338190,
+  "lon": -77.3072088,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4401",
+    "addr:postcode": "22030-4481",
+    "addr:state": "VA",
+    "addr:street": "University Drive",
+    "amenity": "cafe",
+    "branch": "George Mason Univ. Northern Northeast",
+    "brand": "Starbucks",
+    "brand:wikidata": "Q37158",
+    "cuisine": "coffee_shop",
+    "name": "Starbucks",
+    "number": "70035-79577",
+    "official_name": "Starbucks Coffee",
+    "opening_hours": "24/7",
+    "phone": "+1 703-993-5065",
+    "ref": "10908",
+    "takeaway": "yes",
+    "website": "https://www.starbucks.com/store-locator/store/10908/george-mason-univ-northern-ne-4401-university-drive-fairfax-va-220304481-us",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 1592093303,
+  "lat": 38.8327269,
+  "lon": -77.3064037,
+  "tags": {
+    "amenity": "fast_food",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3337388052,
+  "lat": 38.8304611,
+  "lon": -77.3074510,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4400",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "University Drive",
+    "amenity": "fast_food",
+    "brand": "Panera Bread",
+    "brand:wikidata": "Q7130852",
+    "cuisine": "sandwich;bakery",
+    "name": "Panera Bread",
+    "opening_hours": "Mo-Fr 07:00-21:00; Sa-Su 08:00-20:00",
+    "phone": "+1 703-251-0069",
+    "short_name": "Panera",
+    "takeaway": "yes",
+    "website": "https://locations.panerabread.com/va/fairfax/4400-university-drive.html",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3340947357,
+  "lat": 38.8296420,
+  "lon": -77.3069790,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4400",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "University",
+    "amenity": "cafe",
+    "branch": "George Mason Univ. Johnson Cen",
+    "brand": "Starbucks",
+    "brand:wikidata": "Q37158",
+    "cuisine": "coffee_shop",
+    "internet_access": "yes",
+    "name": "Starbucks",
+    "official_name": "Starbucks Coffee",
+    "phone": "+1 703-993-3305",
+    "ref": "1007358",
+    "smoking": "no",
+    "takeaway": "yes",
+    "website": "https://www.starbucks.com/store-locator/store/1007358/george-mason-univ-johnson-cen-4400-university-fairfax-va-22030-us",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3372559880,
+  "lat": 38.8288773,
+  "lon": -77.3023602,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4400",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "Presidents Park Drive",
+    "amenity": "restaurant",
+    "cuisine": "international",
+    "delivery": "no",
+    "name": "Ike's",
+    "not:brand:wikidata": "Q112028897",
+    "opening_hours": "Mo-Th 07:00-21:00; Fr 07:00-14:00; Sa off; Su 16:00-21:00",
+    "smoking": "no",
+    "takeaway": "no",
+    "website": "https://gmu.sodexomyway.com/index.html"
+  }
+},
+{
+  "type": "node",
+  "id": 3372559886,
+  "lat": 38.8294623,
+  "lon": -77.3073277,
+  "tags": {
+    "amenity": "restaurant",
+    "cuisine": "dessert;sushi;ice_cream;bubble_tea",
+    "delivery": "no",
+    "name": "Dreamery / ACE Sushi",
+    "opening_hours": "Mo-Th 11:00 AM - 8:00 PM, Fr 11:00 AM - 6:00 PM",
+    "outdoor_seating": "yes",
+    "smoking": "no",
+    "takeaway": "only",
+    "website": "https://dineoncampus.com/GMU/locations/dreamery"
+  }
+},
+{
+  "type": "node",
+  "id": 7703206735,
+  "lat": 38.8343228,
+  "lon": -77.3107835,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4400",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "University Drive",
+    "amenity": "fast_food",
+    "brand": "Subway",
+    "brand:wikidata": "Q244457",
+    "cuisine": "sandwich",
+    "name": "Subway",
+    "opening_hours": "Mo-Th 11:00-15:00; Fr 00:30-01:00",
+    "phone": "+1 703-993-6196",
+    "takeaway": "yes",
+    "website": "https://restaurants.subway.com/united-states/va/fairfax/4400-university-drive"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598540,
+  "lat": 38.8273006,
+  "lon": -77.3047510,
+  "tags": {
+    "air_conditioning": "yes",
+    "amenity": "cafe",
+    "cuisine": "pizza;bagel;coffee_shop;pastry",
+    "internet_access": "wlan",
+    "level": "1",
+    "name": "Lacava Coffee",
+    "opening_hours": "Mo - Th 8:30 AM - 5:00 PM, Fr 8:30 AM - 3:00 PM",
+    "outdoor_seating": "no",
+    "website": "https://dineoncampus.com/GMU/locations/lacava-coffee"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598541,
+  "lat": 38.8298152,
+  "lon": -77.3148666,
+  "tags": {
+    "amenity": "restaurant",
+    "area": "yes",
+    "name": "The Globe"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598542,
+  "lat": 38.8300957,
+  "lon": -77.3071831,
+  "tags": {
+    "amenity": "cafe",
+    "area": "yes",
+    "name": "Express Market"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598543,
+  "lat": 38.8298978,
+  "lon": -77.3077046,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4477",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "Aquia Creek Lane",
+    "amenity": "fast_food",
+    "brand": "Chipotle",
+    "brand:wikidata": "Q465751",
+    "cuisine": "mexican",
+    "name": "Chipotle",
+    "official_name": "Chipotle Mexican Grill",
+    "phone": "+1 571-459-2152",
+    "takeaway": "yes",
+    "website": "https://locations.chipotle.com/va/fairfax/4477-aquia-creek-lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598544,
+  "lat": 38.8299946,
+  "lon": -77.3077587,
+  "tags": {
+    "amenity": "restaurant",
+    "brand": "Blaze Pizza",
+    "brand:wikidata": "Q23016666",
+    "cuisine": "pizza",
+    "name": "Blaze Pizza"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598545,
+  "lat": 38.8300685,
+  "lon": -77.3078095,
+  "tags": {
+    "amenity": "fast_food",
+    "brand": "The Halal Guys",
+    "brand:wikidata": "Q10846129",
+    "cuisine": "chicken;falafel;gyros",
+    "diet:halal": "yes",
+    "name": "The Halal Guys",
+    "takeaway": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598546,
+  "lat": 38.8301304,
+  "lon": -77.3078508,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4400",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "University Dr",
+    "amenity": "fast_food",
+    "brand": "True Burger",
+    "cuisine": "burger",
+    "diet:meat": "yes",
+    "diet:vegetarian": "yes",
+    "drive_through": "no",
+    "name": "True Burger",
+    "takeaway": "yes",
+    "website": "https://new.dineoncampus.com/GMU/locations/true-burger"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598547,
+  "lat": 38.8301928,
+  "lon": -77.3078939,
+  "tags": {
+    "amenity": "fast_food",
+    "area": "yes",
+    "cuisine": "noodle;asian;hawaiian",
+    "name": "Noodle District"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598548,
+  "lat": 38.8302564,
+  "lon": -77.3079436,
+  "tags": {
+    "amenity": "fast_food",
+    "area": "yes",
+    "name": "Flip Kitchen"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598551,
+  "lat": 38.8319118,
+  "lon": -77.3060982,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4349",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "Chesapeake Lane",
+    "alt_name": "Dunkin' Donuts",
+    "amenity": "fast_food",
+    "brand": "Dunkin'",
+    "brand:wikidata": "Q847743",
+    "cuisine": "donut;coffee_shop",
+    "drive_through": "no",
+    "name": "Dunkin'",
+    "opening_hours": "Mo-Fr 07:00-18:00; Sa-Su 08:00-13:00",
+    "phone": "+1 703-993-6688",
+    "ref": "308047",
+    "takeaway": "yes",
+    "website": "https://locations.dunkindonuts.com/en/va/fairfax/4349-chesapeake-ln/356615"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598552,
+  "lat": 38.8315761,
+  "lon": -77.3071671,
+  "tags": {
+    "addr:housenumber": "4348",
+    "addr:street": "Chesapeake River Way",
+    "amenity": "restaurant",
+    "building": "yes",
+    "cuisine": "smoothie",
+    "internet_access": "wlan",
+    "internet_access:fee": "no",
+    "name": "Shake Smart"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598553,
+  "lat": 38.8328672,
+  "lon": -77.3066963,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "name": "One Stop Shop",
+    "shop": "convenience"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598554,
+  "lat": 38.8337530,
+  "lon": -77.3048204,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "amenity": "fast_food",
+    "name": "The Spot",
+    "takeaway": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598555,
+  "lat": 38.8349633,
+  "lon": -77.3075215,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "amenity": "fast_food",
+    "brand": "Manhattan Pizza",
+    "name": "Manhattan Pizza",
+    "takeaway": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598556,
+  "lat": 38.8349352,
+  "lon": -77.3077593,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "alt_name": "Einstein Brothers Bagels",
+    "amenity": "fast_food",
+    "brand": "Einstein Bros. Bagels",
+    "brand:wikidata": "Q5349788",
+    "cuisine": "bagel",
+    "name": "Einstein Bros. Bagels",
+    "phone": "+1 703-993-6095",
+    "takeaway": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598557,
+  "lat": 38.8349213,
+  "lon": -77.3079629,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4400",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "University Drive",
+    "amenity": "fast_food",
+    "cuisine": "american;soul_food",
+    "diet:vegan": "yes",
+    "name": "NuVegan",
+    "opening_hours": "Mo-Fr 11:00-18:00",
+    "operator": "George Mason Commons - Johnson Center - Lower Level",
+    "phone": "+1-301-651-9260",
+    "takeaway": "yes",
+    "website": "https://nuvegancafe.com/"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598558,
+  "lat": 38.8348341,
+  "lon": -77.3079463,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4441",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "George Mason Boulevard",
+    "amenity": "fast_food",
+    "branch": "George Mason University",
+    "brand": "Panda Express",
+    "brand:wikidata": "Q1358690",
+    "cuisine": "chinese",
+    "name": "Panda Express",
+    "opening_hours": "Mo-Th 11:00-15:00; Fr 00:30-01:00",
+    "phone": "+1 703-993-6042",
+    "takeaway": "yes",
+    "website": "https://www.pandaexpress.com/location/george-mason-university-university-hall-px/menu"
+  }
+},
+{
+  "type": "node",
+  "id": 11378598559,
+  "lat": 38.8306329,
+  "lon": -77.3050610,
+  "tags": {
+    "amenity": "fast_food",
+    "name": "crave"
+  }
+},
+{
+  "type": "node",
+  "id": 11938510396,
+  "lat": 38.8315260,
+  "lon": -77.3092640,
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:housenumber": "4400",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "addr:street": "University Drive",
+    "addr:unit": "1",
+    "amenity": "fast_food",
+    "branch": "George Mason University",
+    "brand": "Chick-fil-A",
+    "brand:wikidata": "Q491516",
+    "cuisine": "chicken",
+    "delivery": "no",
+    "drive_through": "no",
+    "indoor_seating": "no",
+    "name": "Chick-fil-A",
+    "phone": "+1 703-993-9259",
+    "ref": "80428",
+    "takeaway": "yes",
+    "website": "https://www.chick-fil-a.com/locations/va/george-mason-university-sub-1"
+  }
+},
+{
+  "type": "way",
+  "id": 1226883522,
+  "center": {
+    "lat": 38.8342675,
+    "lon": -77.3107589
+  },
+  "tags": {
+    "addr:city": "Fairfax",
+    "addr:postcode": "22030",
+    "addr:state": "VA",
+    "amenity": "fast_food",
+    "brand": "Subway",
+    "brand:wikidata": "Q244457",
+    "cuisine": "sandwich",
+    "fixme:atp": "no ATP match, check if still exists",
+    "name": "Subway",
+    "opening_hours": "Mo-Th 11:00-15:00; Fr 00:30-01:00",
+    "phone": "+1 703-993-6196",
+    "takeaway": "yes",
+    "website": "https://restaurants.subway.com/united-states/va/fairfax/4400-university-drive"
+  }
+}
+
+  ]
+}

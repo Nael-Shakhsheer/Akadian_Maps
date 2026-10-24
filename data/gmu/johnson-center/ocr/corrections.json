@@ -1,0 +1,47 @@
+{
+ "ground": {
+  "rename": {"G02A": "G32A", "ELEV": "ELEV4", "STAIR": "STAIR6", "MECH": "MECH5"},
+  "add": {
+   "ELEV5": [1119, 378, "elevator"], "ELEV2": [608, 932, "elevator"], "ELEV1": [137, 808, "elevator"],
+   "STAIR1": [68, 345, "stair"], "STAIR5": [1695, 428, "stair"], "STAIR3": [940, 226, "stair"],
+   "STAIR-LOBBY2": [1325, 595, "stair"],
+   "VEST7": [1200, 270, "entrance"],
+   "G10B": [461, 998, "room"], "G10DB": [82, 950, "room"], "G26D": [618, 826, "room"],
+   "G30BD": [1365, 278, "room"], "G40D": [1276, 975, "room"], "G40H": [1369, 975, "room"],
+   "G40L": [1467, 862, "room"], "G38C": [1506, 862, "room"], "G46A": [720, 937, "room"],
+   "G46B": [720, 993, "room"], "G45B": [891, 992, "room"]
+  }
+ },
+ "first": {
+  "rename": {"120I": "129", "121SH": "121", "134AT": "134A", "133D": "133C", "136A": "130A",
+             "SHAFT18145": "145A", "STAIR": "STAIR5"},
+  "add": {
+   "ELEV7": [1124, 437, "elevator"], "ELEV1": [150, 898, "elevator"], "ELEV2": [615, 1022, "elevator"],
+   "ELEV6": [1663, 467, "elevator"],
+   "STAIR11": [89, 438, "stair"], "STAIR9": [1697, 513, "stair"], "STAIR7": [1675, 735, "stair"],
+   "STAIR8": [1675, 637, "stair"],
+   "134C": [1730, 472, "room"], "134GA": [1693, 897, "room"], "134J": [1677, 687, "room"]
+  }
+ },
+ "second": {
+  "rename": {"STAIR": "STAIR5", "225A": "228A", "251Z": "251E", "SHAFT16229": "229E", "240BH": "240H",
+             "239": "239H"},
+  "add": {
+   "STAIR9": [68, 332, "stair"], "STAIR4": [1665, 582, "stair"], "STAIR6": [1305, 582, "stair"],
+   "STAIR2": [941, 951, "stair"], "STAIR7": [933, 212, "stair"],
+   "ELEV5": [1120, 330, "elevator"], "ELEV4": [1120, 366, "elevator"], "ELEV3": [1665, 360, "elevator"],
+   "218": [190, 185, "room"], "219A": [590, 265, "room"], "219C": [665, 265, "room"], "246": [305, 772, "room"]
+  }
+ },
+ "third": {
+  "rename": {"STAIR": "STAIR3", "ELEV8": "ELEV5", "311": "311J"},
+  "remove": ["328RR"],
+  "add": {
+   "STAIR8": [838, 692, "stair"], "STAIR7": [66, 942, "stair"], "STAIR4": [1160, 459, "stair"],
+   "STAIR5": [935, 322, "stair"],
+   "ELEV4": [1120, 438, "elevator"], "ELEV1": [1124, 958, "elevator"],
+   "VEST1": [138, 909, "entrance"],
+   "311": [220, 600, "room"]
+  }
+ }
+}

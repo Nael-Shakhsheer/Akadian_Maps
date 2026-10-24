@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Akadian Engine</title>
+  <link rel="stylesheet" href="/ui/admin.css">
+</head>
+<body>
+  <!-- lock screen -->
+  <section id="lock" class="lock hidden">
+    <div class="card narrow">
+      <div class="brand"><span class="logo">A</span><strong>Akadian Engine</strong></div>
+      <p class="eyebrow" id="lockStep">Private studio</p>
+      <h1 id="lockTitle">Unlock the engine</h1>
+      <p class="muted" id="lockText">Your schematics are encrypted on this machine. Enter your passphrase to work on them.</p>
+      <form id="lockForm">
+        <label>Passphrase<input type="password" id="pass1" autocomplete="current-password" required></label>
+        <label id="pass2Row" class="hidden">Repeat passphrase<input type="password" id="pass2" autocomplete="new-password"></label>
+        <div class="hint" id="lockHint" hidden>Use at least 12 characters. There is no recovery for a forgotten passphrase: encrypted schematics can't be opened without it. Published maps are not affected.</div>
+        <div class="error" id="lockError"></div>
+        <button class="btn primary" id="lockBtn">Unlock</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- studio -->
+  <div id="studio" class="studio hidden">
+    <aside class="side">
+      <div class="brand"><span class="logo">A</span><strong>Akadian Engine</strong></div>
+      <nav>
+        <button data-nav="buildings" class="nav on">Buildings</button>
+        <button data-nav="campuses" class="nav">Campuses</button>
+      </nav>
+      <div class="side-foot">
+        <a class="muted small" href="http://localhost:8080/" target="_blank" rel="noopener">Open public map ↗</a>
+        <button class="btn ghost" id="lockNow">Lock engine</button>
+      </div>
+    </aside>
+    <main id="main"></main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/ui/admin.js"></script>
+</body>
+</html>
