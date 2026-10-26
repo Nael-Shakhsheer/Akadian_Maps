@@ -88,38 +88,44 @@ KIND = {"STAIR": "stair", "ELEV": "elevator", "VEST": "entrance", "WOMENS": "res
 SUFFIX_DIGIT = {"8": "B", "0": "D", "1": "I", "4": "A", "6": "G", "5": "S", "2": "Z"}
 
 
-def _fix_room(tok, prefix):
+def _fix_room(tok, prefix, digits=3):
     if prefix.isalpha():
         if prefix == "G":
             tok = re.sub(r"^[6C0O]", "G", tok)
         return tok if re.fullmatch(rf"{prefix}\d{{2}}[A-Z]{{0,2}}", tok) else None
     if prefix and not tok.startswith(prefix):
         return None
-    if re.fullmatch(r"\d{4}", tok):  # 3-digit room + letter suffix read as a digit
-        tok = tok[:3] + SUFFIX_DIGIT.get(tok[3], tok[3])
-    return tok if re.fullmatch(r"\d{3}[A-Z]{0,2}", tok) else None
+    if re.fullmatch(rf"\d{{{digits + 1}}}", tok):  # room number + letter suffix read as a digit
+        tok = tok[:digits] + SUFFIX_DIGIT.get(tok[digits], tok[digits])
+    return tok if re.fullmatch(rf"\d{{{digits}}}[A-Z]{{0,2}}", tok) else None
 
 
-def _tokens(text, prefix):
+def _tokens(text, prefix, digits=3):
     t = re.sub(r"[^A-Z0-9!]", "", text.upper())
     for a, b in FIXES:
         t = re.sub(a, b, t)
     out = []
-    for m in re.finditer(rf"({KEYWORDS})(\d*)|([A-Z]?\d{{2,4}}[A-Z]{{0,2}})", t):
+    for m in re.finditer(rf"({KEYWORDS})(\d*)|([A-Z]?\d{{2,{digits + 1}}}[A-Z]{{0,2}})", t):
         if m.group(1):
             out.append((m.group(1) + m.group(2), KIND.get(m.group(1), "service")))
         else:
-            r = _fix_room(m.group(3), prefix)
+            r = _fix_room(m.group(3), prefix, digits)
             if r:
                 out.append((r, "room"))
     return out
 
 
-def labels_from_ocr(items: list, prefix: str) -> list:
-    """Raw OCR -> [{id, kind, x, y}] room labels for one floor (prefix: 'G', '1', '2', ...)."""
+def labels_from_ocr(items: list, prefix: str, digits: int = None) -> list:
+    """Raw OCR -> [{id, kind, x, y}] room labels for one floor (prefix: 'G', '1', '2', ...; digits: 3 for "214",
+    4 for buildings numbered like "1201A"; by default, whichever most of the floor's numbers look like)."""
+    if digits is None:
+        texts = [re.sub(r"[^A-Z0-9]", "", it["text"].upper()) for it in items]
+        n = {d: sum(bool(re.fullmatch(rf"{re.escape(prefix)}\d{{{d - len(prefix)}}}[A-Z]?", t)) for t in texts)
+             for d in (3, 4)} if prefix.isdigit() else {3: 1, 4: 0}
+        digits = 4 if n[4] > n[3] else 3
     labels = {}
     for it in items:
-        toks = _tokens(it["text"], prefix)
+        toks = _tokens(it["text"], prefix, digits)
         for i, (tid, kind) in enumerate(toks):
             x = it["x"] + (i - (len(toks) - 1) / 2) * it["w"] / max(len(toks), 1)  # spread merged tokens
             if tid not in labels or labels[tid]["score"] < it["score"]:

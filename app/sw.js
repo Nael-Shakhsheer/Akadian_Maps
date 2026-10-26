@@ -1,7 +1,7 @@
 // Offline support: the app keeps working on campus with a weak signal.
 // App files and map data: network first (always fresh), cache as fallback.
 // Libraries, map tiles, fonts and icons: cache first (they never change for a given URL).
-const CACHE = 'akadian-v1';
+const CACHE = 'akadian-v2';
 const SHELL = ['/', '/style.css', '/manifest.webmanifest', '/icons/icon-192.png'];
 const LONG_LIVED = ['/vendor/', '/api/public/tiles/', '/api/public/fonts/', '/icons/'];
 

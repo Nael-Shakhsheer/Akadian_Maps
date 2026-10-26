@@ -390,6 +390,10 @@ export class OutdoorMap {
     this.map.getSource('route')?.setData(lls ? { type: 'Feature', geometry: { type: 'LineString', coordinates: lls.map(([a, b]) => [b, a]) } } : empty());
   }
 
+  center([lat, lon]) {
+    this.map.easeTo({ center: [lon, lat], zoom: Math.max(this.map.getZoom(), 17.3), duration: 700 });
+  }
+
   // fly to one step of the walking directions (null clears the marker)
   focus(ll) {
     this.map.getSource('focus')?.setData(ll ? { type: 'Feature', geometry: { type: 'Point', coordinates: [ll[1], ll[0]] } } : empty());

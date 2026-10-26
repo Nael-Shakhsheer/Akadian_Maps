@@ -238,6 +238,18 @@ button { font: inherit; color: inherit; }
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+.spinner {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 6px;
+  border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.map-me {
+  position: absolute; z-index: 3; left: 10px; bottom: 82px; width: 40px; height: 40px; border-radius: 12px;
+  border: 1px solid var(--line); background: #1c1f25e6; color: var(--accent-hi); font-size: 20px; cursor: pointer;
+  display: grid; place-items: center; backdrop-filter: blur(8px);
+}
+.map-me:hover { border-color: var(--accent); }
+
 /* keyboard focus: always visible, never on mouse clicks */
 :focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
 button:focus:not(:focus-visible) { outline: none; }

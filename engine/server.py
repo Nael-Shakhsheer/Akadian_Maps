@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Response, HTTPException, UploadFile, File, Form, Depends
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from .vault import Vault
 from .store import Store, check_slug
@@ -30,6 +31,9 @@ SECURITY_HEADERS = {
 
 
 def _headers(app, extra=None):
+    # compress text responses (JS, JSON, CSS: ~4x smaller); tiles that are already gzipped are left alone
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
     @app.middleware("http")
     async def add_headers(request, call_next):
         resp = await call_next(request)

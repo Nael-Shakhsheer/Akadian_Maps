@@ -1,13 +1,15 @@
 // Loads a building's indoor data and converts between plan pixels, metres and lat/lon.
 // Plan coordinates are pixels on the first-floor plan ("common frame"); every floor shares them.
 
-export async function loadBuilding(url) {
+// grid: false skips decoding the walkable grid (~1 MB of cells) when only the routing worker needs it.
+export async function loadBuilding(url, { grid = true } = {}) {
   const data = await (await fetch(url)).json();
   // metres per plan pixel, from the engine's georeference fit
   data.mPerPx = data.mPerPx || Math.hypot(data.building.transform[0], data.building.transform[3]);
   const { w, h } = data.grid;
   for (const f of data.floors) {
-    f.cells = decodeRle(f.grid, w * h);
+    if (grid) f.cells = decodeRle(f.grid, w * h);
+    else f.rle = f.grid; // kept so a main-thread fallback can still decode it
     delete f.grid;
   }
   data.floorIndex = Object.fromEntries(data.floors.map((f, i) => [f.id, i]));
@@ -15,7 +17,7 @@ export async function loadBuilding(url) {
   return data;
 }
 
-function decodeRle(runs, n) {
+export function decodeRle(runs, n) {
   const out = new Uint8Array(n);
   let p = 0;
   for (let i = 0; i < runs.length; i += 2) {
@@ -66,4 +68,9 @@ export function roomTitle(r) {
 
 export function floorName(b, fid) {
   return b.floors[b.floorIndex[fid]].name;
+}
+
+// Short floor tag for the 3D view: G, LL (lower level), L1, L2…
+export function floorShort(f) {
+  return f.id === 'ground' ? 'G' : /^lower/i.test(f.name) ? 'LL' : `L${f.level}`;
 }

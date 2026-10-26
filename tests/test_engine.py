@@ -102,6 +102,36 @@ def test_engine_end_to_end():
     assert a.get("/api/projects").json()[0]["published"] is True
 
 
+def test_four_digit_rooms():
+    from engine.pipeline.ingest import labels_from_ocr
+    items = [{"text": t, "x": 10 * i, "y": 0, "w": 30, "h": 10, "score": 0.9}
+             for i, t in enumerate(["1201A", "12010", "1005", "204", "VEST1"])]
+    ids = {l["id"] for l in labels_from_ocr(items, "1", digits=4)}
+    assert {"1201A", "1201D", "1005", "VEST1"} <= ids and "204" not in ids, ids
+    assert {l["id"] for l in labels_from_ocr(items, "2")} == {"204", "VEST1"}  # default: 3-digit rooms
+
+
+def test_footprint_fit():
+    """A plan with no surveyed entrances is placed by fitting its outline to the footprint."""
+    import math
+    import cv2
+    import numpy as np
+    from engine.pipeline.georef import fit_outline
+    # an L-shaped building, 60 x 40 m, drawn at 0.05 m/px and rotated 30 degrees on the map
+    plan = np.array([[100, 100], [1300, 100], [1300, 500], [700, 500], [700, 900], [100, 900]])
+    mask = np.zeros((1000, 1400), np.uint8)
+    cv2.fillPoly(mask, [plan.astype(np.int32)], 1)
+    th, s = math.radians(30), 0.05
+    R = s * np.array([[math.cos(th), -math.sin(th)], [math.sin(th), math.cos(th)]])
+    poly_m = np.c_[plan[:, 0], -plan[:, 1]] @ R.T + [5, -3]
+    M, _ = fit_outline(mask, poly_m)
+    err = np.c_[plan[:, 0], -plan[:, 1]] @ M[:, :2].T + M[:, 2] - poly_m
+    assert np.hypot(*err.T).max() < 1.0, err  # corners within a metre
+    assert abs(math.hypot(M[0, 0], M[1, 0]) - s) < 0.002
+
+
 if __name__ == "__main__":
     test_engine_end_to_end()
-    print("engine end-to-end: OK")
+    test_four_digit_rooms()
+    test_footprint_fit()
+    print("engine end-to-end, labels, footprint fit: OK")

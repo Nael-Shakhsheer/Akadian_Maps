@@ -8,6 +8,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { floorShort } from './building.js';
 
 // Memex palette: charcoal surfaces, warm orange light.
 export const THEME = {
@@ -22,6 +23,11 @@ export const THEME = {
 };
 const GLOW = (k) => new THREE.Color(THEME.accent).multiplyScalar(k); // >1 = blooms
 
+// Render resolution: full sharpness on desktops, capped on phones where 3x screens make the glow pass costly.
+export function renderScale() {
+  return Math.min(devicePixelRatio, Math.min(innerWidth, innerHeight) < 700 ? 1.5 : 2);
+}
+
 const FLOOR_GAP = 12;   // metres between floors in the exploded view (real floor-to-floor is ~4.5 m)
 const SLAB_T = 0.35;
 const ROOM_H = 1.1;     // cut-away wall height so you can see into the floor
@@ -34,10 +40,13 @@ export class IndoorView {
     this.container = container;
     this.cx = b.texture.x0 + b.texture.w / 2;
     this.cy = b.texture.y0 + b.texture.h / 2;
+    this.span = Math.max(b.texture.w, b.texture.h) * b.mPerPx; // metres: camera distances scale with the building
+    const lv = b.floors.map((f) => f.level);
+    this.midY = (Math.min(...lv) + Math.max(...lv)) / 2 * FLOOR_GAP;
     this.roomBySpace = new Map(b.rooms.filter((r) => r.space !== undefined).map((r) => [`${r.floor}:${r.space}`, r]));
 
     const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true }));
-    r.setPixelRatio(Math.min(devicePixelRatio, 2));
+    r.setPixelRatio(renderScale());
     r.toneMapping = THREE.ACESFilmicToneMapping;
     container.appendChild(r.domElement);
     this.labels = new CSS2DRenderer();
@@ -75,7 +84,7 @@ export class IndoorView {
 
     this.raycaster = new THREE.Raycaster();
     this.pointer = null;
-    r.domElement.addEventListener('pointermove', (e) => (this.pointer = this.ndc(e)));
+    r.domElement.addEventListener('pointermove', (e) => { this.pointer = this.ndc(e); this.pointerMoved = true; });
     r.domElement.addEventListener('pointerleave', () => { this.pointer = null; this.setHover(null); });
     r.domElement.addEventListener('pointerdown', (e) => (this.downAt = [e.clientX, e.clientY]));
     r.domElement.addEventListener('pointerup', (e) => {
@@ -164,7 +173,7 @@ export class IndoorView {
 
     const tag = document.createElement('div');
     tag.className = 'tag floor-tag';
-    tag.textContent = f.id === 'ground' ? 'G' : `L${f.level}`;
+    tag.textContent = floorShort(f);
     const tagObj = new CSS2DObject(tag);
     const t = this.b.texture;
     const [lx, lz] = this.w(t.x0, t.y0 + t.h * 0.42);
@@ -193,9 +202,9 @@ export class IndoorView {
     }
     if (mode !== 'route' && mode !== 'all') {
       const fl = this.floors[this.b.floorIndex[mode]];
-      this.flyTo(new THREE.Vector3(0, fl.y, 0), 150);
+      this.flyTo(new THREE.Vector3(0, fl.y, 0), Math.max(55, this.span * 1.08));
     } else if (mode === 'all' && !this.legs) {
-      this.flyTo(new THREE.Vector3(0, FLOOR_GAP * 1.5, 0), 210);
+      this.flyTo(new THREE.Vector3(0, this.midY, 0), Math.max(70, this.span * 1.5));
     } else if (this.pathPts) this.frame(this.pathPts);
   }
 
@@ -259,7 +268,7 @@ export class IndoorView {
       const [X, Z] = this.w(...leg.at);
       const end = legs.slice(legs.indexOf(leg)).filter((l) => l.transition).reduce((a, l) => (Math.hypot(l.at[0] - leg.at[0], l.at[1] - leg.at[1]) < 30 ? l : a), leg);
       const up = this.b.floorIndex[end.to] > this.b.floorIndex[leg.from];
-      const name = end.to === 'ground' ? 'G' : `L${this.b.floors[this.b.floorIndex[end.to]].level}`;
+      const name = floorShort(this.b.floors[this.b.floorIndex[end.to]]);
       // sits where the route arrives, so it never collides with the start label
       this.addTag(`${leg.kind === 'elevator' ? 'Elevator' : 'Stairs'} ${up ? '↑' : '↓'} ${name}`, X, this.floorY(end.to) + 2.2, Z, end.to, 'hint');
     }
@@ -348,6 +357,14 @@ export class IndoorView {
     };
   }
 
+  // Several buildings can share one container: only the active one is shown and rendered.
+  setActive(on) {
+    this.active = on;
+    this.renderer.domElement.style.display = on ? '' : 'none';
+    this.labels.domElement.style.display = on ? '' : 'none';
+    if (!on) this.setHover(null);
+  }
+
   resize() {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
@@ -360,7 +377,7 @@ export class IndoorView {
   }
 
   tick() {
-    if (!this.container.offsetParent) return; // hidden
+    if (this.active === false || !this.container.offsetParent) return; // hidden
     const dt = Math.min(this.clock.getDelta(), 0.1);
     this.time += dt;
 
@@ -392,7 +409,11 @@ export class IndoorView {
       const a = this.pathPts[i], b = this.pathPts[i + 1] || a;
       this.walker.position.lerpVectors(a, b, this.segLens[i] ? d / this.segLens[i] : 0);
     }
-    if (this.pointer && !this.fly) this.setHover(this.pick(this.pointer));
+    // hover check only when the pointer moved (not on every frame)
+    if (this.pointer && !this.fly && this.pointerMoved) {
+      this.pointerMoved = false;
+      this.setHover(this.pick(this.pointer));
+    }
 
     this.controls.update();
     this.composer.render();

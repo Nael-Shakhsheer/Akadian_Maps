@@ -1,0 +1,386 @@
+[
+ {
+  "id": "CORR",
+  "kind": "circulation",
+  "x": 132,
+  "y": 568
+ },
+ {
+  "id": "CORR1",
+  "kind": "circulation",
+  "x": 1386,
+  "y": 443
+ },
+ {
+  "id": "CORR2",
+  "kind": "circulation",
+  "x": 1314,
+  "y": 530
+ },
+ {
+  "id": "CORR3",
+  "kind": "circulation",
+  "x": 1177,
+  "y": 515
+ },
+ {
+  "id": "CORR4114",
+  "kind": "circulation",
+  "x": 214,
+  "y": 799
+ },
+ {
+  "id": "CORR7",
+  "kind": "circulation",
+  "x": 366,
+  "y": 566
+ },
+ {
+  "id": "CORR8",
+  "kind": "circulation",
+  "x": 921,
+  "y": 419
+ },
+ {
+  "id": "CORR9",
+  "kind": "circulation",
+  "x": 1052,
+  "y": 651
+ },
+ {
+  "id": "LOBBY2",
+  "kind": "circulation",
+  "x": 704,
+  "y": 459
+ },
+ {
+  "id": "LOBBY3",
+  "kind": "circulation",
+  "x": 628,
+  "y": 652
+ },
+ {
+  "id": "ELEV",
+  "kind": "elevator",
+  "x": 645,
+  "y": 459
+ },
+ {
+  "id": "ELEV2",
+  "kind": "elevator",
+  "x": 633,
+  "y": 507
+ },
+ {
+  "id": "ELEV3",
+  "kind": "elevator",
+  "x": 642,
+  "y": 560
+ },
+ {
+  "id": "VEST1",
+  "kind": "entrance",
+  "x": 623,
+  "y": 742
+ },
+ {
+  "id": "UNISEX",
+  "kind": "restroom",
+  "x": 1087,
+  "y": 668
+ },
+ {
+  "id": "UNISEX301",
+  "kind": "restroom",
+  "x": 424,
+  "y": 764
+ },
+ {
+  "id": "UNISEX4",
+  "kind": "restroom",
+  "x": 1086,
+  "y": 620
+ },
+ {
+  "id": "UNISEX6",
+  "kind": "restroom",
+  "x": 1482,
+  "y": 696
+ },
+ {
+  "id": "1002",
+  "kind": "room",
+  "x": 456,
+  "y": 652
+ },
+ {
+  "id": "1005",
+  "kind": "room",
+  "x": 333,
+  "y": 604
+ },
+ {
+  "id": "1006",
+  "kind": "room",
+  "x": 261,
+  "y": 604
+ },
+ {
+  "id": "1027",
+  "kind": "room",
+  "x": 1301,
+  "y": 493
+ },
+ {
+  "id": "1029",
+  "kind": "room",
+  "x": 1480,
+  "y": 494
+ },
+ {
+  "id": "1101",
+  "kind": "room",
+  "x": 455,
+  "y": 832
+ },
+ {
+  "id": "1101D",
+  "kind": "room",
+  "x": 320,
+  "y": 870
+ },
+ {
+  "id": "1102",
+  "kind": "room",
+  "x": 870,
+  "y": 711
+ },
+ {
+  "id": "1102A",
+  "kind": "room",
+  "x": 870,
+  "y": 624
+ },
+ {
+  "id": "1103",
+  "kind": "room",
+  "x": 1158,
+  "y": 688
+ },
+ {
+  "id": "1104",
+  "kind": "room",
+  "x": 1402,
+  "y": 667
+ },
+ {
+  "id": "1104A",
+  "kind": "room",
+  "x": 1303,
+  "y": 619
+ },
+ {
+  "id": "1104B",
+  "kind": "room",
+  "x": 1304,
+  "y": 646
+ },
+ {
+  "id": "1110",
+  "kind": "room",
+  "x": 162,
+  "y": 912
+ },
+ {
+  "id": "1111",
+  "kind": "room",
+  "x": 132,
+  "y": 766
+ },
+ {
+  "id": "1113",
+  "kind": "room",
+  "x": 242,
+  "y": 854
+ },
+ {
+  "id": "1117",
+  "kind": "room",
+  "x": 233,
+  "y": 682
+ },
+ {
+  "id": "1200",
+  "kind": "room",
+  "x": 187,
+  "y": 414
+ },
+ {
+  "id": "1201",
+  "kind": "room",
+  "x": 423,
+  "y": 392
+ },
+ {
+  "id": "1201A",
+  "kind": "room",
+  "x": 534,
+  "y": 451
+ },
+ {
+  "id": "1201OB",
+  "kind": "room",
+  "x": 546,
+  "y": 507
+ },
+ {
+  "id": "1202",
+  "kind": "room",
+  "x": 651,
+  "y": 311
+ },
+ {
+  "id": "1203",
+  "kind": "room",
+  "x": 1076,
+  "y": 311
+ },
+ {
+  "id": "1204",
+  "kind": "room",
+  "x": 1320,
+  "y": 336
+ },
+ {
+  "id": "1205",
+  "kind": "room",
+  "x": 820,
+  "y": 312
+ },
+ {
+  "id": "1206",
+  "kind": "room",
+  "x": 802,
+  "y": 271
+ },
+ {
+  "id": "1207",
+  "kind": "room",
+  "x": 922,
+  "y": 311
+ },
+ {
+  "id": "ELEC1",
+  "kind": "service",
+  "x": 698,
+  "y": 545
+ },
+ {
+  "id": "ELEC2",
+  "kind": "service",
+  "x": 1478,
+  "y": 335
+ },
+ {
+  "id": "JAN",
+  "kind": "service",
+  "x": 1053,
+  "y": 606
+ },
+ {
+  "id": "JAN2",
+  "kind": "service",
+  "x": 1128,
+  "y": 494
+ },
+ {
+  "id": "MECH2",
+  "kind": "service",
+  "x": 1481,
+  "y": 552
+ },
+ {
+  "id": "MECH4",
+  "kind": "service",
+  "x": 1470,
+  "y": 617
+ },
+ {
+  "id": "MECH5",
+  "kind": "service",
+  "x": 721,
+  "y": 652
+ },
+ {
+  "id": "SHAFT",
+  "kind": "service",
+  "x": 778,
+  "y": 431
+ },
+ {
+  "id": "SHAFT2",
+  "kind": "service",
+  "x": 956,
+  "y": 538
+ },
+ {
+  "id": "SHAFT3",
+  "kind": "service",
+  "x": 777,
+  "y": 592
+ },
+ {
+  "id": "SHAFT4",
+  "kind": "service",
+  "x": 225,
+  "y": 777
+ },
+ {
+  "id": "SHAFT5",
+  "kind": "service",
+  "x": 384,
+  "y": 785
+ },
+ {
+  "id": "TELDATA",
+  "kind": "service",
+  "x": 1119,
+  "y": 552
+ },
+ {
+  "id": "TELDATA1",
+  "kind": "service",
+  "x": 852,
+  "y": 444
+ },
+ {
+  "id": "TRASH",
+  "kind": "service",
+  "x": 1101,
+  "y": 447
+ },
+ {
+  "id": "TRASH4",
+  "kind": "service",
+  "x": 1380,
+  "y": 493
+ },
+ {
+  "id": "STAIR1",
+  "kind": "stair",
+  "x": 282,
+  "y": 652
+ },
+ {
+  "id": "STAIR2",
+  "kind": "stair",
+  "x": 131,
+  "y": 630
+ },
+ {
+  "id": "STAIR3",
+  "kind": "stair",
+  "x": 1230,
+  "y": 480
+ }
+]

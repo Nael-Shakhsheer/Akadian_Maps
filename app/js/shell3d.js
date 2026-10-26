@@ -7,7 +7,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { THEME } from './indoor3d.js';
+import { THEME, renderScale } from './indoor3d.js';
 
 const LEVEL_H = 3.8;  // metres per floor (true scale)
 const SLAB = 0.3;
@@ -16,7 +16,7 @@ export class ShellView {
   constructor(container) {
     this.container = container;
     const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true }));
-    r.setPixelRatio(Math.min(devicePixelRatio, 2));
+    r.setPixelRatio(renderScale());
     r.toneMapping = THREE.ACESFilmicToneMapping;
     container.appendChild(r.domElement);
     this.labels = new CSS2DRenderer();

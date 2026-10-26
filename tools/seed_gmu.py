@@ -1,4 +1,5 @@
-"""Seed the engine with the GMU demo: the Johnson Center (public GMU floor plans) and the GMU campus layer (OSM).
+"""Seed the engine with the GMU demo: indoor maps of the Johnson Center, Research Hall, Merten Hall and The HUB
+(public GMU floor plans) and the GMU campus layer (OSM).
 
     python tools/seed_gmu.py                 # asks for your engine passphrase, imports JC as an editable project, publishes
     python tools/seed_gmu.py --publish-only  # no vault needed: just builds and writes the public map files
@@ -14,8 +15,9 @@ from engine.vault import Vault
 from engine.store import Store
 from engine.pipeline import ingest, build as builder, campus as campus_pipe, basemap
 
-JC = ROOT / "data/gmu/johnson-center"
-CAMPUS = ROOT / "data/gmu/campus"
+GMU = ROOT / "data/gmu"
+JC = GMU / "johnson-center"
+CAMPUS = GMU / "campus"
 
 FLOORS = [  # id, name, level, room prefix, offset relative to Floor 1
     ("ground", "Ground", 0, "G", [0.0, -91.0]),
@@ -95,6 +97,82 @@ def jc_project():
     }
 
 
+# Other buildings with public plans. Plans are prepared with tools/prepare_building.py; floors are aligned to the
+# reference floor by offsets (checked with build.overlay). Buildings with one tagged OSM entrance are placed on the
+# map by fitting the plan outline to the OSM footprint (engine/pipeline/georef.py).
+_W = [1755, 0, 1818, 475]  # the PDF viewer's zoom widget baked into GMU's plan images (right edge)
+OTHER = [
+    {"id": "gmu-research", "name": "Research Hall", "slug": "research-hall",
+     # the lower level is left out: GMU's PDF shows only a sliver of mechanical space, cut off at the page edge
+     "floors": [("first", "Floor 1", 1, "Research-1", [0, 0], [_W, [1758, 490, 1806, 650]]),
+                ("second", "Floor 2", 2, "Research-2", [1.6, -84.7], [_W, [1750, 475, 1818, 1463], [0, 0, 66, 1463]]),
+                ("third", "Floor 3", 3, "Research-3", [1.7, -65.8], [_W, [1750, 475, 1818, 1463], [0, 0, 66, 1463]]),
+                ("fourth", "Floor 4", 4, "Research-4", [1.8, -56.3], [_W, [1750, 475, 1818, 1463], [0, 0, 66, 1463]])],
+     "fix": {"first": {"ELEV": "ELEV2", "+ELEV1": (1141, 745)},
+             "second": {"ELEV2": (1141, 705), "ELEV8": "ELEV3"},
+             "third": {"ELEV": "ELEV2", "+ELEV1": (1141, 680), "MENS": "MENS1"},
+             "fourth": {"ELEV": "ELEV2", "+ELEV1": (1141, 689)}},
+     "entrances": [("first", "VEST1", (0, -30), "East entrance"),
+                   ("first", "VEST3", (-5, 35), "West entrance (by the rotunda)")]},
+    {"id": "gmu-merten", "name": "Merten Hall", "slug": "merten-hall",
+     "floors": [("first", "Floor 1", 1, "Merten-1", [0, 0], [[1540, 0, 1818, 1463]])],
+     "fix": {"first": {"1201OB": "1201B", "UNISEX301": "UNISEX3", "ELEV": "ELEV1",
+                       "+1007": (155, 573), "+1114": (240, 800), "+1116": (240, 740), "+1101A": (455, 768),
+                       "+1101B": (403, 728), "+1101C": (330, 735), "+WOMENS2": (853, 503), "+MENS2": (1060, 503),
+                       "+WOMENS1": (912, 514), "+MENS1": (993, 514), "+VEST2": (515, 935)}},
+     "entrances": [("first", "VEST1", (0, 38), "South entrance (main)"),
+                   ("first", "VEST2", (0, 22), "Southwest entrance")], "osm_entrances": {0: 2439656666}},
+    {"id": "gmu-hub", "name": "The HUB", "slug": "the-hub",
+     # only the lower level (HUB-1) is published; the plan also outlines the wing above it, which is cut out here
+     "floors": [("first", "Lower Level", 1, "Hub-1", [0, 0],
+                 [[2490, 0, 2561, 1141], [0, 0, 440, 80], [1035, 905, 1182, 990], [1662, 1040, 1797, 1112],
+                  [819, 0, 1619, 527], [1619, 0, 1740, 420]])],
+     "fix": {"first": {"1004D": "1004A", "1006S": "1006B", "1206I": "1206", "1207I": "1207", "ELEV": "ELEV2",
+                       "+1004B": (1372, 689), "+1005": (1349, 727), "+1015": (1369, 929), "+1201": (1428, 936),
+                       "+1208": (1527, 1012), "+1209": (1559, 1012), "+1229": (1505, 956), "+1230": (1544, 956),
+                       "+1217": (1703, 806), "+1220": (1648, 779), "+MENS1": (1231, 608), "+WOMENS1": (1291, 608),
+                       "+STAIR3": (1712, 453), "+ELEV1": (1178, 702), "+ELEV3": (1711, 783)}},
+     "entrances": [("first", "VEST2", (-22, 0), "West entrance (lower level)")], "partial": True,
+     "osm_entrances": {0: 2742633993}},
+]
+KINDS = {"VEST": "entrance", "STAIR": "stair", "ELEV": "elevator", "MENS": "restroom", "WOMENS": "restroom",
+         "UNISEX": "restroom"}
+
+
+def plan_project(cfg):
+    """A project for one of OTHER: OCR labels + hand fixes, entrances (OSM-tagged doors give the map position)."""
+    base = GMU / cfg["slug"]
+    labels = {}
+    for fid, _, _, name, _, _ in cfg["floors"]:
+        ls = {l["id"]: l for l in json.loads((base / f"ocr/{name}.labels.json").read_text())}
+        for k, v in cfg.get("fix", {}).get(fid, {}).items():
+            if k.startswith("+"):  # a label OCR missed
+                i = k[1:]
+                kind = next((kd for pre, kd in KINDS.items() if i.startswith(pre)), "room")
+                ls[i] = {"id": i, "kind": kind, "x": v[0], "y": v[1]}
+            elif isinstance(v, str):  # misread id
+                ls[v] = dict(ls.pop(k), id=v)
+            else:  # misplaced label
+                ls[k] = dict(ls[k], x=v[0], y=v[1])
+        labels[fid] = sorted(ls.values(), key=lambda l: (l["kind"], l["id"]))
+    way = json.loads((base / "osm/building.json").read_text())["elements"][0]
+    tagged = json.loads((base / "osm/entrances.json").read_text())["elements"]
+    entrances = []
+    for fid, vest, (nx, ny), name in cfg["entrances"]:
+        v = next(l for l in labels[fid] if l["id"] == vest)
+        entrances.append({"name": name, "floor": fid, "label": vest, "x": v["x"] + nx, "y": v["y"] + ny})
+    for e, node in cfg.get("osm_entrances", {}).items():  # entrance index -> OSM node it matches
+        n = next(t for t in tagged if t["id"] == node)
+        entrances[e].update(lat=n["lat"], lon=n["lon"])
+    return {
+        "id": cfg["id"], "name": cfg["name"], "campus": "gmu", "osm_way": way["id"],
+        "floors": [{"id": f, "name": n, "level": lv, "prefix": "", "offset": off, "reference": off == [0, 0],
+                    "exclude": ex, "processed": True, "pdf": pdf} for f, n, lv, pdf, off, ex in cfg["floors"]],
+        "labels": labels, "voids": {}, "entrances": entrances, "extra_links": [],
+        "footprint": [[p["lat"], p["lon"]] for p in way["geometry"]], "footprint_partial": cfg.get("partial", False),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--home", default=str(ROOT / "engine_data"))
@@ -102,6 +180,7 @@ def main():
     a = ap.parse_args()
     home = Path(a.home)
     missing = [f for f in ("Ground", "First", "Second", "Third") if not (JC / f"source/floor-plans-pdf/JC-{f}-Floor-Plan.pdf").exists()]
+    missing += [f[3] for cfg in OTHER for f in cfg["floors"] if not (GMU / cfg["slug"] / f"source/floor-plans-pdf/{f[3]}.pdf").exists()]
     if missing:
         sys.exit("GMU's floor-plan PDFs aren't downloaded yet. Run:  python tools/fetch_gmu_sources.py")
     vault = Vault(home)
@@ -116,25 +195,31 @@ def main():
             vault.setup(pw)
     store = Store(home, vault)
 
-    p = jc_project()
-    images, ocr = {}, {}
-    for f in p["floors"]:
-        src = (JC / f"source/floor-plans-pdf/JC-{f['id'].capitalize()}-Floor-Plan.pdf").read_bytes()
-        images[f["id"]] = ingest.render(src)
-        ocr[f["id"]] = json.loads((JC / f"ocr/{f['id']}.ocr.json").read_text())
-        f["size"] = [int(images[f["id"]].shape[1]), int(images[f["id"]].shape[0])]
+    jc = jc_project()
+    for f in jc["floors"]:
+        f["pdf"] = f"JC-{f['id'].capitalize()}-Floor-Plan"
+    projects = [(jc, JC, lambda f, pdf: f"ocr/{f['id']}.ocr.json")]
+    projects += [(plan_project(cfg), GMU / cfg["slug"], lambda f, pdf: f"ocr/{pdf}.ocr.json") for cfg in OTHER]
+    for p, base, ocr_path in projects:
+        images, ocr = {}, {}
+        for f in p["floors"]:
+            pdf = f.pop("pdf")
+            src = (base / f"source/floor-plans-pdf/{pdf}.pdf").read_bytes()
+            images[f["id"]] = ingest.render(src)
+            ocr[f["id"]] = json.loads((base / ocr_path(f, pdf)).read_text())
+            f["size"] = [int(images[f["id"]].shape[1]), int(images[f["id"]].shape[0])]
+            if not a.publish_only:
+                store.put_blob("projects", p["id"], f"source-{f['id']}", src)
+                store.put_blob("projects", p["id"], f"render-{f['id']}", ingest.encode_png(images[f["id"]]))
+                store.put_blob("projects", p["id"], f"ocr-{f['id']}", json.dumps(ocr[f["id"]]).encode())
+        out, debug, report = builder.build(p, images, ocr, log=lambda m: None)
+        store.publish("buildings", p["id"], out)
         if not a.publish_only:
-            store.put_blob("projects", p["id"], f"source-{f['id']}", src)
-            store.put_blob("projects", p["id"], f"render-{f['id']}", ingest.encode_png(images[f["id"]]))
-            store.put_blob("projects", p["id"], f"ocr-{f['id']}", json.dumps(ocr[f["id"]]).encode())
-    out, debug, report = builder.build(p, images, ocr)
-    store.publish("buildings", p["id"], out)
-    if not a.publish_only:
-        store.save("projects", p["id"], p)
-        store.put_blob("projects", p["id"], "draft", json.dumps(out).encode())
-        for fid, d in debug.items():
-            store.put_blob("projects", p["id"], f"debug-{fid}", d)
-    print(f"Johnson Center: {report['rooms']} rooms, {report['links']} links, georef {report['georef']}")
+            store.save("projects", p["id"], p)
+            store.put_blob("projects", p["id"], "draft", json.dumps(out).encode())
+            for fid, d in debug.items():
+                store.put_blob("projects", p["id"], f"debug-{fid}", d)
+        print(f"{p['name']}: {report['rooms']} rooms, {report['links']} links, georef {report['georef']}")
 
     raw = {"boundary": json.loads((CAMPUS / "boundary.json").read_text(encoding="utf-8"))["elements"][0],
            "buildings": json.loads((CAMPUS / "buildings-raw.json").read_text(encoding="utf-8"))["elements"],
@@ -142,13 +227,14 @@ def main():
            "walk": json.loads((CAMPUS / "walk-raw.json").read_text(encoding="utf-8"))["elements"],
            "transit": json.loads((CAMPUS / "transit-raw.json").read_text(encoding="utf-8"))["elements"],
            "food": json.loads((CAMPUS / "food-raw.json").read_text(encoding="utf-8"))["elements"]}
-    indoor = {str(p["osm_way"]): "buildings/gmu-jc.json"}
+    indoor = {str(p["osm_way"]): f"buildings/{p['id']}.json" for p, _, _ in projects}
     camp = campus_pipe.compile_campus("George Mason University – Fairfax", raw, HINTS, indoor)
     stats = camp.pop("stats")
     store.publish("campus", "gmu", camp)
     if not a.publish_only:
         store.save("campuses", "gmu", {"id": "gmu", "name": camp["name"], "boundary_way": raw["boundary"]["id"],
-                                       "hints": HINTS, "raw": raw, "indoor": {str(p["osm_way"]): "gmu-jc"}, "stats": stats})
+                                       "hints": HINTS, "raw": raw, "indoor": {str(p["osm_way"]): p["id"] for p, _, _ in projects},
+                                       "stats": stats})
     print(f"GMU campus: {stats}")
     if not (home / "published/tiles/gmu/meta.json").exists():
         w, s, e, n = camp["bounds"]

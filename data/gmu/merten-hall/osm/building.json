@@ -1,0 +1,69 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-25T23:44:51Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "way",
+  "id": 145889836,
+  "bounds": {
+    "minlat": 38.8347726,
+    "minlon": -77.3082796,
+    "maxlat": 38.8352433,
+    "maxlon": -77.3072851
+  },
+  "nodes": [
+    12431835782,
+    12431846477,
+    12431846476,
+    1592091754,
+    2439656664,
+    2439656665,
+    2439656666,
+    12431846474,
+    12431846475,
+    1592091757,
+    1592091759,
+    12431846473,
+    12431846472,
+    12431846471,
+    12431846470,
+    12431835782
+  ],
+  "geometry": [
+    { "lat": 38.8351452, "lon": -77.3082796 },
+    { "lat": 38.8348521, "lon": -77.3082254 },
+    { "lat": 38.8348502, "lon": -77.3082419 },
+    { "lat": 38.8347726, "lon": -77.3082276 },
+    { "lat": 38.8348101, "lon": -77.3078935 },
+    { "lat": 38.8348859, "lon": -77.3079075 },
+    { "lat": 38.8348903, "lon": -77.3078682 },
+    { "lat": 38.8349366, "lon": -77.3074555 },
+    { "lat": 38.8349532, "lon": -77.3074586 },
+    { "lat": 38.8349726, "lon": -77.3072851 },
+    { "lat": 38.8352433, "lon": -77.3073350 },
+    { "lat": 38.8352220, "lon": -77.3075260 },
+    { "lat": 38.8352057, "lon": -77.3075230 },
+    { "lat": 38.8351298, "lon": -77.3082008 },
+    { "lat": 38.8351535, "lon": -77.3082052 },
+    { "lat": 38.8351452, "lon": -77.3082796 }
+  ],
+  "tags": {
+    "addr:county": "Fairfax County",
+    "addr:housenumber": "4441",
+    "addr:state": "VA",
+    "addr:street": "George Mason Boulevard",
+    "building": "university",
+    "elevator": "3",
+    "floors": "5",
+    "name": "Merten Hall",
+    "source": "esri/Virginia_address"
+  }
+}
+
+  ]
+}

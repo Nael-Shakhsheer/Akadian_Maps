@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from .ingest import is_title, encode_png
+from .georef import fit_outline
 
 CELL = 3  # routing grid cell size in plan pixels
 
@@ -55,7 +56,9 @@ def masks(im, text):
     drawn = cv2.morphologyEx((im < 245).astype(np.uint8), cv2.MORPH_CLOSE, np.ones((17, 17), np.uint8))
     ff = drawn.copy() * 255
     h, w = ff.shape
-    cv2.floodFill(ff, np.zeros((h + 2, w + 2), np.uint8), (2, 2), 128)
+    for corner in ((2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)):  # from every corner: a plan that spans the
+        if ff[corner[1], corner[0]] == 0:                               # page width mustn't wall off the bottom
+            cv2.floodFill(ff, np.zeros((h + 2, w + 2), np.uint8), corner, 128)
     footprint = (ff != 128).astype(np.uint8)
     footprint = cv2.morphologyEx(footprint, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
     # walkable: gray fill, with text and thin lines inside it closed over
@@ -314,33 +317,55 @@ def build(project, images, ocr, log=print):
     report["links"] = len(links)
     log(f"{len(links)} stair/elevator links between floors")
 
-    # georeference: similarity transform common px -> local metres (east, north), fitted to entrances with lat/lon
+    # georeference: similarity transform common px -> local metres (east, north). Fitted to entrances with
+    # lat/lon when there are two or more; otherwise to the building's footprint outline (see georef.py).
     offs = {f["id"]: f.get("offset", [0, 0]) for f in floors_cfg}
-    ents = [e for e in project.get("entrances", []) if e.get("lat") is not None and e.get("lon") is not None and e["floor"] in offs]
-    if len(ents) < 2:
-        raise ValueError("Add at least two entrances with latitude/longitude so the map can be placed on campus.")
-    lat0 = sum(e["lat"] for e in ents) / len(ents)
-    lon0 = sum(e["lon"] for e in ents) / len(ents)
+    ents = [e for e in project.get("entrances", []) if e["floor"] in offs]
+    geo = [e for e in ents if e.get("lat") is not None and e.get("lon") is not None]
+    fp = project.get("footprint")
+    if len(geo) < 2 and not fp:
+        raise ValueError("Add at least two entrances with latitude/longitude (or the building's footprint) "
+                         "so the map can be placed on campus.")
+    if not ents:
+        raise ValueError("Add at least one entrance so routes can start at a door.")
+    ref_pts = [(e["lat"], e["lon"]) for e in geo] if len(geo) >= 2 else [tuple(p) for p in fp]
+    lat0 = sum(p[0] for p in ref_pts) / len(ref_pts)
+    lon0 = sum(p[1] for p in ref_pts) / len(ref_pts)
     kx, ky = 111320 * math.cos(math.radians(lat0)), 110540
-    src, dst, entrances = [], [], []
+    to_m = lambda lat, lon: [(lon - lon0) * kx, (lat - lat0) * ky]
+    plan_pt = {id(e): to_common((e["x"], e["y"]), offs[e["floor"]]) for e in ents}
+    if len(geo) >= 2:
+        src = [[plan_pt[id(e)][0], -plan_pt[id(e)][1]] for e in geo]  # flip y so the transform is a proper rotation
+        M, _ = cv2.estimateAffinePartial2D(np.float32(src), np.float32([to_m(e["lat"], e["lon"]) for e in geo]),
+                                           method=cv2.LMEDS)
+        if M is None:
+            raise ValueError("Couldn't fit the entrances to the map; check their positions and coordinates.")
+        how = "entrances"
+    else:
+        hint = [(plan_pt[id(e)], to_m(e["lat"], e["lon"])) for e in geo]
+        M, fit = fit_outline(allfp, np.array([to_m(*p) for p in fp]), hint, partial=project.get("footprint_partial", False))
+        how = f"footprint outline (score {fit})"
+    scale = math.hypot(M[0, 0], M[1, 0])
+    entrances = []
     for e in ents:
-        px, py = to_common((e["x"], e["y"]), offs[e["floor"]])
+        px, py = plan_pt[id(e)]
         start = (px, py)
         if e.get("label") and e["label"] in labels_common.get(e["floor"], {}):
             l = labels_common[e["floor"]][e["label"]]
             start = (l["x"], l["y"])
-        src.append([px, -py])  # flip y so the transform is a proper rotation
-        dst.append([(e["lon"] - lon0) * kx, (e["lat"] - lat0) * ky])
-        entrances.append({"name": e["name"], "floor": e["floor"], "lat": e["lat"], "lon": e["lon"],
+        east, north = M[:, :2] @ np.array([px, -py]) + M[:, 2]
+        entrances.append({"name": e["name"], "floor": e["floor"], "lat": lat0 + north / ky, "lon": lon0 + east / kx,
                           "plan": [round(px), round(py)], "start": [round(start[0]), round(start[1])]})
-    M, _ = cv2.estimateAffinePartial2D(np.float32(src), np.float32(dst), method=cv2.LMEDS)
-    if M is None:
-        raise ValueError("Couldn't fit the entrances to the map; check their positions and coordinates.")
-    res = np.float32(src) @ M[:, :2].T + M[:, 2] - np.float32(dst)
-    scale = math.hypot(M[0, 0], M[1, 0])
-    report["georef"] = {"m_per_px": round(scale, 5), "rotation_deg": round(math.degrees(math.atan2(M[1, 0], M[0, 0])), 1),
-                        "residuals_m": np.round(np.hypot(*res.T), 1).tolist()}
-    log(f"georeference: {scale:.4f} m/px, residuals {report['georef']['residuals_m']} m")
+    res = [math.dist(M[:, :2] @ np.array([plan_pt[id(e)][0], -plan_pt[id(e)][1]]) + M[:, 2], to_m(e["lat"], e["lon"]))
+           for e in geo]
+    if len(geo) >= 2:  # entrances define the fit: publish their surveyed coordinates
+        for out_e, e in zip(entrances, ents):
+            if e.get("lat") is not None and e.get("lon") is not None:
+                out_e["lat"], out_e["lon"] = e["lat"], e["lon"]
+    report["georef"] = {"method": how, "m_per_px": round(scale, 5),
+                        "rotation_deg": round(math.degrees(math.atan2(M[1, 0], M[0, 0])), 1),
+                        "residuals_m": [round(r, 1) for r in res]}
+    log(f"georeference by {how}: {scale:.4f} m/px, entrance residuals {report['georef']['residuals_m']} m")
 
     footprint = project.get("footprint")
     if not footprint:  # derive from the reference floor's outline

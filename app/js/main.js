@@ -1,10 +1,9 @@
 // App flow: pick a room or place -> GPS walks you there on the 3D campus -> 3D indoor route from the entrance.
 // GPS is only used outdoors; indoors the route starts from the entrance, so no indoor positioning is needed.
 import { loadBuilding, planToLatLng, latLngToPlan, metersBetween, roomTitle, floorName } from './building.js';
-import { Router, simplify } from './router.js';
-import { IndoorView } from './indoor3d.js';
+import { simplify } from './router.js';
+import { IndoorRouting } from './routing.js';
 import { OutdoorMap, nearestOnRing, CATEGORIES } from './outdoor.js';
-import { ShellView } from './shell3d.js';
 import { WalkGraph } from './walk.js';
 import { walkingSteps } from './directions.js';
 import { ParkingSpot, ParkDetector, describe, ago, carHeading, CAR_SVG } from './parking.js';
@@ -26,29 +25,41 @@ function bootError(msg) {
   $('#bootRetry').classList.remove('hidden');
   $('#bootRetry').onclick = () => location.reload();
 }
-let campus, b;
+// Every building with an indoor map: { bld: its campus outline, b: indoor data, name, routing + view (made on first use) }
+let campus, indoors;
 try {
   campus = await fetch(`${DATA}/campus/${CAMPUS}.json`).then((r) => {
     if (r.status === 404) throw new Error('This campus map hasn’t been published yet.');
     if (!r.ok) throw new Error('The map server isn’t responding. Check your connection and try again.');
     return r.json();
   });
-  const shellWithIndoor = campus.buildings.find((x) => x.indoor);
-  b = await loadBuilding(`${DATA}/${shellWithIndoor.indoor}`);
+  const shells = campus.buildings.filter((x) => x.indoor);
+  // the routing worker keeps the grid; a building that fails to load just isn't offered indoors
+  const loaded = await Promise.allSettled(shells.map((x) => loadBuilding(`${DATA}/${x.indoor}`, { grid: false })));
+  indoors = shells.map((bld, i) => loaded[i].value && { bld, b: loaded[i].value, name: loaded[i].value.building.name || bld.name })
+    .filter(Boolean).sort((x, y) => y.b.rooms.length - x.b.rooms.length); // biggest first: it answers ?to= links without a building
+  if (shells.length && !indoors.length) throw new Error('The indoor maps couldn’t be loaded. Check your connection and try again.');
 } catch (e) {
   bootError(e.message.includes('fetch') ? 'Can’t reach the map server. Check your connection and try again.' : e.message);
   throw e;
 }
-const jcShell = campus.buildings.find((x) => x.indoor);
+const main = indoors[0]; // the main indoor building: home chips, demo start point
+const ibByBld = new Map(indoors.map((ib) => [ib.bld.id, ib]));
+const ibOf = new Map(indoors.flatMap((ib) => ib.b.rooms.map((r) => [r, ib]))); // room -> its building
+const routingFor = (ib) => (ib.routing ||= new IndoorRouting(`${DATA}/${ib.bld.indoor}`, ib.b));
+const roomSub = (room, ib) => `${room.kind === 'room' ? `Room ${room.id} · ` : ''}${floorName(ib.b, room.floor)} · ${ib.name}`;
 const CAMPUS_SHORT = campus.name.split(' – ')[0];
 $('#campusName').textContent = CAMPUS_SHORT;
 $('#homeEyebrow').textContent = campus.name;
 $('#exploreTitle').firstChild.textContent = CAMPUS_SHORT;
 
-const router = new Router(b);
-const entranceStart = (e) => router.snap(e.floor, e.start);
 const walk = campus.walk ? new WalkGraph(campus.walk) : null;
-let indoor = null;
+let indoor = null; // the IndoorView on screen (one per building, made on first visit)
+
+// The 3D views (and the 1.2 MB 3D library) load only when first needed, then stay warm.
+const views = {};
+const loadIndoorView = () => (views.indoor ||= import('./indoor3d.js'));
+const loadShellView = () => (views.shell ||= import('./shell3d.js'));
 
 // Outdoor walking route on the campus network; straight line if there's no network data.
 function walkRoute(from, to) {
@@ -57,7 +68,7 @@ function walkRoute(from, to) {
 }
 
 // dest: room | building | point (bus stop, food outside mapped buildings, your car)
-const state = { dest: null, user: null, demo: false, choice: null, perEntrance: [], arrivedOnce: false, mode: 'nav', url: '' };
+const state = { dest: null, ib: null, user: null, demo: false, choice: null, perEntrance: [], arrivedOnce: false, mode: 'nav', url: '' };
 
 function toast(msg) {
   const t = $('#toast');
@@ -104,9 +115,13 @@ function sheetMode(mode) {
   carFab.classList.toggle('hidden', mode === 'park');
 }
 
-$('#stepFree').onchange = () => {
+// Step-free is an accessibility need, not a one-off: remember it on this device.
+try { $('#stepFree').checked = localStorage.getItem('akadian:step-free') === '1'; } catch {}
+$('#stepFree').onchange = async () => {
+  try { localStorage.setItem('akadian:step-free', $('#stepFree').checked ? '1' : '0'); } catch {}
+  toast($('#stepFree').checked ? 'Step-free: routes avoid stairs' : 'Step-free off');
   if (!state.dest) return;
-  if (state.dest.type === 'room') computeIndoor();
+  if (state.dest.type === 'room') await computeIndoor();
   pickTarget(true);
   if (state.dest.type === 'room' && screen === 'indoor') goIndoor();
 };
@@ -114,10 +129,10 @@ $('#stepFree').onchange = () => {
 // ---------- search ----------
 const lineNames = (s) => s.lines.map((r) => campus.transit.lines[r]?.name || r).join(' · ');
 const searchable = [
-  ...b.rooms
+  ...indoors.flatMap((ib) => ib.b.rooms
     .filter((r) => (r.kind === 'room' || r.kind === 'restroom') && !r.restricted)
-    .map((r) => ({ type: 'room', r, title: roomTitle(r), hay: `${r.id} ${roomTitle(r)} ${r.kind === 'restroom' ? 'bathroom restroom toilet wc' : ''} johnson center`.toLowerCase() }))
-    .sort((a, c) => (!!c.r.name - !!a.r.name) || a.r.id.localeCompare(c.r.id, undefined, { numeric: true })),
+    .map((r) => ({ type: 'room', r, ib, title: roomTitle(r), hay: `${r.id} ${roomTitle(r)} ${r.kind === 'restroom' ? 'bathroom restroom toilet wc' : ''} ${ib.name}`.toLowerCase() })))
+    .sort((a, c) => (!!c.r.name - !!a.r.name) || (indoors.indexOf(a.ib) - indoors.indexOf(c.ib)) || a.r.id.localeCompare(c.r.id, undefined, { numeric: true })),
   ...campus.buildings
     .filter((x) => x.name)
     .sort((a, c) => a.name.localeCompare(c.name))
@@ -142,14 +157,38 @@ function score(s, q, words) {
   return -1;
 }
 
+// Typos: "chipolte", "fenwik", "dewbery". Each query word may be 1 edit off (2 for long words).
+function typoScore(s, words) {
+  const hayWords = s.hay.split(/[^a-z0-9']+/);
+  return words.every((w) => w.length < 4 ? s.hay.includes(w)
+    : hayWords.some((h) => Math.abs(h.length - w.length) <= 2 && editDistance(w, h, w.length >= 7 ? 2 : 1) <= (w.length >= 7 ? 2 : 1))) ? 5 : -1;
+}
+
+function editDistance(a, b, max) {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      rowMin = Math.min(rowMin, cur[j]);
+    }
+    if (rowMin > max) return max + 1; // already too different
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
 let topResult = null;
 function renderResults(q) {
   q = q.trim().toLowerCase();
   const words = q.split(/\s+/).filter(Boolean);
-  const list = q
+  let list = q
     ? searchable.map((s) => ({ s, k: score(s, q, words) })).filter((x) => x.k >= 0).sort((a, c) => a.k - c.k).map((x) => x.s)
     : searchable.filter((s) => s.type === 'room' && s.r.name);
-  $('#listTitle').textContent = q ? (list.length ? `Results for “${q}”` : '') : 'Popular in the Johnson Center';
+  let fuzzy = false;
+  if (q && !list.length && q.length >= 4) { list = searchable.filter((s) => typoScore(s, words) >= 0); fuzzy = true; } // "did you mean"
+  $('#listTitle').textContent = q ? (list.length ? `${fuzzy ? 'Closest matches for' : 'Results for'} “${q}”` : '') : 'Popular places';
   $('#chips').classList.toggle('hidden', !!q);
   $('#recent').classList.toggle('hidden', !!q);
   $('#results').innerHTML = '';
@@ -161,7 +200,7 @@ function renderResults(q) {
     let go;
     if (s.type === 'room') {
       li.innerHTML = `<span class="badge">${s.r.kind === 'restroom' ? 'WC' : s.r.id}</span>
-        <div><div>${s.title}</div><div class="meta">Johnson Center · ${floorName(b, s.r.floor)}</div></div>`;
+        <div><div>${s.title}</div><div class="meta">${s.ib.name} · ${floorName(s.ib.b, s.r.floor)}</div></div>`;
       go = () => chooseRoom(s.r);
     } else if (s.type === 'food') {
       li.innerHTML = `<span class="badge food">FOOD</span>
@@ -189,7 +228,7 @@ $('#q').addEventListener('input', (e) => renderResults(e.target.value));
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter' && topResult) { e.preventDefault(); topResult(); } });
 
 for (const id of QUICK) {
-  const r = b.rooms.find((x) => x.id === id);
+  const r = main?.b.rooms.find((x) => x.id === id);
   if (!r) continue;
   const c = document.createElement('button');
   c.className = 'chip';
@@ -221,12 +260,24 @@ function remember(kind, key, title, sub) {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5))); } catch {}
 }
 function openRecent(r) {
-  if (r.kind === 'room') { const x = b.rooms.find((y) => y.id === r.key); if (x) return chooseRoom(x); }
+  if (r.kind === 'room') { const x = findRoom(...r.key.split('|').reverse()); if (x) return chooseRoom(x); }
   if (r.kind === 'building') { const x = campus.buildings.find((y) => y.id === r.key); if (x) return chooseBuilding(x); }
   if (r.kind === 'stop') { const x = campus.transit?.stops.find((y) => y.name === r.key); if (x) return chooseStop(x); }
   if (r.kind === 'food') { const x = campus.food?.find((y) => `${y.name}@${y.lat}` === r.key); if (x) return chooseFood(x); }
   toast('That place isn’t on the map anymore.');
 }
+// A room by id, in one building (its id, e.g. gmu-research) or the first building that has it.
+function findRoom(id, inBld) {
+  for (const ib of indoors) {
+    if (inBld && ib.b.building.id !== inBld) continue;
+    const r = ib.b.rooms.find((x) => x.id.toLowerCase() === id.toLowerCase() && x.kind === 'room' && !x.restricted);
+    if (r) return r;
+  }
+  return null;
+}
+const roomKey = (room, ib) => (ib === main ? room.id : `${ib.b.building.id}|${room.id}`);
+const roomUrl = (room, ib) => `?to=${encodeURIComponent(room.id)}${ib === main ? '' : `&in=${ib.b.building.id}`}`;
+
 function renderHome() {
   renderCarCard();
   const list = recents();
@@ -240,17 +291,22 @@ function renderHome() {
 function setHeader(html) { $('#destOut').innerHTML = html; $('#destIn').innerHTML = html; }
 
 function chooseRoom(room, { record = true } = {}) {
+  const ib = ibOf.get(room);
   state.dest = { type: 'room', room, title: roomTitle(room) };
+  state.ib = ib;
   state.arrivedOnce = false;
-  state.url = `?to=${encodeURIComponent(room.id)}`;
-  setHeader(`${state.dest.title}<small>${room.kind === 'room' ? `Room ${room.id} · ` : ''}${floorName(b, room.floor)} · Johnson Center</small>`);
-  if (record) remember('room', room.id, state.dest.title, `${room.kind === 'room' ? `Room ${room.id} · ` : ''}${floorName(b, room.floor)}`);
-  computeIndoor();
-  goOutdoor(jcShell);
+  state.url = roomUrl(room, ib);
+  setHeader(`${state.dest.title}<small>${roomSub(room, ib)}</small>`);
+  if (record) remember('room', roomKey(room, ib), state.dest.title, roomSub(room, ib));
+  state.perEntrance = [];
+  goOutdoor(ib.bld);
+  loadIndoorView(); // you'll likely go inside: start fetching the 3D view now
+  computeIndoor().then(() => pickTarget());
 }
 
 function chooseBuilding(bld) {
   state.dest = { type: 'building', bld, title: bld.name || 'Building' };
+  state.ib = ibByBld.get(bld.id) || null;
   state.arrivedOnce = false;
   state.perEntrance = [];
   state.url = `?b=${bld.id}`;
@@ -279,18 +335,22 @@ function chooseStop(stop) {
 function chooseFood(f) {
   remember('food', `${f.name}@${f.lat}`, f.name, [f.kind, f.building].filter(Boolean).join(' · '));
   const url = `?food=${campus.food.indexOf(f)}`;
-  if (f.building_id === jcShell.id) {
+  const ib = ibByBld.get(f.building_id);
+  // Its floor: as recorded, or (unknown) the main floor, but only guessed when every floor of the building is mapped.
+  const floor = ib && (f.level != null ? ib.b.floors.find((x) => x.level === f.level)
+    : ib.b.floors.length >= Math.round(ib.bld.h / 3.8) ? ib.b.floors.find((x) => x.level === 1) || ib.b.floors[0] : null);
+  if (floor) {
     // inside a building we have an indoor map for: route all the way to the counter
-    const level = f.level ?? 1;
-    const floor = b.floors.find((x) => x.level === level) || b.floors.find((x) => x.level === 1) || b.floors[0];
+    const b = ib.b;
     const [x, y] = latLngToPlan(b, f.lat, f.lon);
     const room = { id: f.name, kind: 'food', name: f.name, floor: floor.id, label: [x, y],
       poly: [[x - 14, y - 14], [x + 14, y - 14], [x + 14, y + 14], [x - 14, y + 14]] };
+    ibOf.set(room, ib);
     state.url = url;
     chooseRoom(room, { record: false });
     state.url = url;
     history.replaceState(history.state, '', url);
-    setHeader(`${f.name}<small>${[f.kind, `${floorName(b, floor.id)} · ${f.building}`].filter(Boolean).join(' · ')}</small>`);
+    setHeader(`${f.name}<small>${[f.kind, `${floorName(b, floor.id)} · ${ib.name}`].filter(Boolean).join(' · ')}</small>`);
     return;
   }
   choosePoint({ title: f.name, sub: [f.kind, f.cuisine, f.building && `in ${f.building}`].filter(Boolean).join(' · '),
@@ -311,19 +371,22 @@ function openExplore() {
   sheetMode('explore');
   show('outdoor', { url: state.url });
   // start on the central campus (everything within ~350 m of the main building), not the whole boundary
-  const mid = jcShell.ring[0];
+  const mid = (main?.bld || campus.buildings[0]).ring[0];
   const core = campus.buildings.filter((x) => metersBetween([x.ring[0][1], x.ring[0][0]], [mid[1], mid[0]]) < 350)
     .flatMap((x) => x.ring.map(([lon, lat]) => [lat, lon]));
   outdoor.ready.then(() => { startGps(); outdoor.fit(core); });
 }
 
 // Indoor route from every entrance to the destination room (so we can pick the best overall).
-function computeIndoor() {
-  const stepFree = $('#stepFree').checked;
-  const room = state.dest.room;
-  const goal = router.snap(room.floor, room.label);
-  state.perEntrance = b.entrances.map((e) => {
-    const legs = router.route(entranceStart(e), goal, { stepFree });
+// Runs in the routing worker; if you pick somewhere else meanwhile, the stale answer is dropped.
+async function computeIndoor() {
+  const dest = state.dest;
+  state.perEntrance = [];
+  const ib = state.ib;
+  const all = await routingFor(ib).fromEntrances(dest.room, $('#stepFree').checked);
+  if (state.dest !== dest) return;
+  state.perEntrance = ib.b.entrances.map((e, i) => {
+    const legs = all[i];
     const meters = legs ? legs.reduce((s, l) => s + (l.meters || 0) + (l.transition ? 8 : 0), 0) : Infinity;
     return { e, legs, meters };
   });
@@ -365,7 +428,8 @@ function startGps() {
   watchId = navigator.geolocation.watchPosition(
     (p) => {
       const ll = [p.coords.latitude, p.coords.longitude];
-      if (metersBetween(ll, [b.building.origin.lat, b.building.origin.lon]) > FAR_FROM_CAMPUS) {
+      const o = main ? [main.b.building.origin.lat, main.b.building.origin.lon] : [campus.buildings[0].ring[0][1], campus.buildings[0].ring[0][0]];
+      if (metersBetween(ll, o) > FAR_FROM_CAMPUS) {
         return demoMode('You’re not on campus.');
       }
       setGps(`Using your location (±${fmtDist(p.coords.accuracy)})`);
@@ -382,13 +446,14 @@ function demoMode(reason) {
   watchId = null;
   state.demo = true;
   setGps(`${reason} Tap the map to choose your start.`, { retry: reason !== 'You’re not on campus.' });
-  if (!state.user) setUser(planToLatLng(b, 2600, -900)); // a spot a few hundred metres away
+  if (!state.user && main) setUser(planToLatLng(main.b, 2600, -900)); // a spot a few hundred metres from the main building
 }
 
 function setUser(ll) {
   const moved = !state.user || metersBetween(state.user, ll) > 8;
   state.user = ll;
   outdoor.setUser(ll);
+  meBtn.classList.remove('hidden');
   if (state.mode === 'park') return updateParkSheet();
   if (moved) pickTarget(); // don't recompute (or refit the map) for GPS jitter
 }
@@ -401,7 +466,12 @@ function pickTarget(refit = false) {
   if (!state.dest || state.mode !== 'nav') return;
   if (state.dest.type === 'building') return pickBuilding(refit);
   if (state.dest.type === 'point') return pickPoint(refit);
-  if (!state.perEntrance.length) return;
+  if (!state.perEntrance.length) { // indoor routes still being worked out
+    $('#outLeg').innerHTML = '<span class="muted"><span class="spinner" aria-hidden="true"></span> Finding the best entrance…</span>';
+    $('#arrived').classList.add('hidden');
+    $('#walkSteps').innerHTML = '';
+    return;
+  }
   let best = null;
   for (const p of state.perEntrance) {
     const out = state.user ? walkRoute(state.user, [p.e.lat, p.e.lon]) : null;
@@ -410,8 +480,8 @@ function pickTarget(refit = false) {
   }
   state.choice = best;
   const e = best.e;
-  outdoor.setPoints(b.entrances.map((x) => ({ lat: x.lat, lon: x.lon, kind: x === e ? 'best' : 'entrance' })));
-  showWalk(best.out, `${state.dest.room.id}:${e.name}`, refit, jcShell.ring, e.name);
+  outdoor.setPoints(state.ib.b.entrances.map((x) => ({ lat: x.lat, lon: x.lon, kind: x === e ? 'best' : 'entrance' })));
+  showWalk(best.out, `${state.ib.bld.id}:${state.dest.room.id}:${e.name}`, refit, state.ib.bld.ring, `${e.name} of ${state.ib.name}`);
   $('#outLeg').innerHTML = best.out
     ? `<b class="total">About ${walkMins(best.out.meters) + walkMins(best.meters)} min</b>
        Walk to the <b>${e.name}</b>: ${walkLine(best.out.meters)}<br>
@@ -430,11 +500,11 @@ function pickBuilding(refit) {
   const bld = state.dest.bld;
   const target = state.user ? nearestOnRing(bld.ring, state.user) : [bld.ring[0][1], bld.ring[0][0]];
   const out = state.user ? walkRoute(state.user, target) : null;
-  outdoor.setPoints(bld.indoor ? b.entrances.map((x) => ({ lat: x.lat, lon: x.lon, kind: 'entrance' })) : [{ lat: target[0], lon: target[1], kind: 'best' }]);
+  outdoor.setPoints(state.ib ? state.ib.b.entrances.map((x) => ({ lat: x.lat, lon: x.lon, kind: 'entrance' })) : [{ lat: target[0], lon: target[1], kind: 'best' }]);
   showWalk(out, `b:${bld.id}`, refit, bld.ring, bld.name || 'building');
   $('#outLeg').innerHTML = (out ? `<b class="total">About ${walkMins(out.meters)} min</b> ${fmtDist(out.meters)} walk<br>` : '')
-    + `<span class="muted">${bld.indoor ? 'Search a room to get a route inside.' : 'Indoor map coming soon for this building.'}</span>`;
-  $('#arrived').classList.toggle('hidden', !bld.indoor);
+    + `<span class="muted">${state.ib ? 'Search a room to get a route inside.' : 'Indoor map coming soon for this building.'}</span>`;
+  $('#arrived').classList.toggle('hidden', !state.ib);
   $('#arrived').textContent = 'Explore inside in 3D →';
 }
 
@@ -474,7 +544,7 @@ function renderWalkSteps(steps) {
 }
 $('#fitRoute').onclick = () => {
   const d = state.dest;
-  const ring = d?.type === 'building' ? d.bld.ring : d?.type === 'point' ? [[d.lon, d.lat]] : jcShell.ring;
+  const ring = d?.type === 'building' ? d.bld.ring : d?.type === 'point' ? [[d.lon, d.lat]] : state.ib?.bld.ring || [];
   outdoor.fit([...(state.walkCoords || []), ...ring.map(([lon, lat]) => [lat, lon])]);
 };
 $('#arrived').onclick = () => goIndoor();
@@ -495,14 +565,23 @@ let shell = null;
 const CAT_LABEL = { other: 'Campus services', ...Object.fromEntries(CATEGORIES.map((c) => [c.id, c.label])) };
 
 function openBuilding(bld) {
-  if (bld.indoor) { // full indoor map: open it straight away
+  if (ibByBld.has(bld.id)) { // full indoor map: open it straight away
     state.dest = { type: 'building', bld, title: bld.name || 'Building' };
+    state.ib = ibByBld.get(bld.id);
     state.url = `?view=${bld.id}`;
     setHeader(`${state.dest.title}<small>Indoor 3D map · tap a room for directions</small>`);
     return goIndoor();
   }
   show('building', { url: `?view=${bld.id}` });
-  if (!shell) shell = new ShellView($('#shell'));
+  showBuilding(bld);
+}
+
+async function showBuilding(bld) {
+  if (!shell) {
+    $('#bldTitle').innerHTML = `${bld.name || 'Building'}<small>Loading 3D model…</small>`;
+    const { ShellView } = await loadShellView();
+    shell ||= new ShellView($('#shell'));
+  }
   shell.resize();
 
   const cat = CATEGORIES.find((c) => c.id === bld.cat);
@@ -575,6 +654,15 @@ $('#parkPromptNo').onclick = () => $('#parkPrompt').classList.add('hidden');
 const carFab = document.createElement('button');
 carFab.className = 'map-fab';
 $('#map').append(carFab);
+// recenter on your location (appears once we know where you are)
+const meBtn = document.createElement('button');
+meBtn.className = 'map-me hidden';
+meBtn.innerHTML = '<span aria-hidden="true">◎</span>';
+meBtn.setAttribute('aria-label', 'Center the map on my location');
+meBtn.title = 'Center on me';
+meBtn.onclick = () => state.user && outdoor.center(state.user);
+$('#map').append(meBtn);
+
 function renderCarFab() {
   const spot = parking.current();
   carFab.innerHTML = `${CAR_SVG}<span>${spot ? 'My car' : 'Save my spot'}</span>`;
@@ -657,15 +745,22 @@ function walkToCar() {
 }
 
 // ---------- indoor ----------
-function ensureIndoor() {
+async function ensureIndoor() {
   show('indoor', { url: state.url });
-  if (!indoor) indoor = new IndoorView($('#scene'), b, { onSelect: rerouteIndoor });
+  const ib = state.ib;
+  if (!ib.view) {
+    $('#steps').innerHTML = '<li class="muted"><span class="spinner" aria-hidden="true"></span> Loading the 3D map…</li>';
+    const { IndoorView } = await loadIndoorView();
+    ib.view ||= new IndoorView($('#scene'), ib.b, { onSelect: rerouteIndoor });
+  }
+  for (const x of indoors) x.view?.setActive(x === ib); // one building on screen; the others stop rendering
+  indoor = ib.view;
   indoor.resize();
 }
 
-function goIndoor() {
+async function goIndoor() {
   if (state.dest?.type === 'building') {
-    ensureIndoor();
+    await ensureIndoor();
     indoor.clearRoute();
     indoor.setFloorMode('all');
     renderFloorbar([]);
@@ -673,30 +768,33 @@ function goIndoor() {
     return;
   }
   const c = state.choice;
+  if (state.dest?.type === 'room' && !state.perEntrance.length) { toast('Still finding the best route…'); return; }
   if (!c?.legs) { toast(state.dest?.room ? 'No route to this room yet. Try turning off Step-free.' : 'Pick a room first.'); return; }
-  ensureIndoor();
+  await ensureIndoor();
   indoor.showRoute(c.legs, { ...state.dest.room, title: state.dest.title }, c.e.name.split(' (')[0]);
   renderFloorbar(c.legs);
   renderSteps(c);
 }
 
 // Tapped a room in the 3D view: route there from the entrance you came in (or the main one).
-function rerouteIndoor(room) {
-  const e = state.choice?.e || b.entrances[0];
-  const legs = router.route(entranceStart(e), router.snap(room.floor, room.label), { stepFree: $('#stepFree').checked });
+async function rerouteIndoor(room) {
+  const ib = state.ib;
+  const e = (state.choice?.e && ib.b.entrances.includes(state.choice.e) && state.choice.e) || ib.b.entrances[0];
+  const legs = await routingFor(ib).fromEntrance(e, room, $('#stepFree').checked);
   if (!legs) { toast('No route to that room.'); return; }
   state.dest = { type: 'room', room, title: roomTitle(room) };
   state.choice = { e, legs };
-  state.url = `?to=${encodeURIComponent(room.id)}`;
+  state.url = roomUrl(room, ib);
   history.replaceState(history.state, '', state.url);
-  remember('room', room.id, state.dest.title, `${room.kind === 'room' ? `Room ${room.id} · ` : ''}${floorName(b, room.floor)}`);
-  setHeader(`${state.dest.title}<small>${room.kind === 'room' ? `Room ${room.id} · ` : ''}${floorName(b, room.floor)} · Johnson Center</small>`);
+  remember('room', roomKey(room, ib), state.dest.title, roomSub(room, ib));
+  setHeader(`${state.dest.title}<small>${roomSub(room, ib)}</small>`);
   indoor.showRoute(legs, { ...room, title: state.dest.title }, e.name.split(' (')[0]);
   renderFloorbar(legs);
   renderSteps(state.choice);
 }
 
 function renderFloorbar(legs) {
+  const b = state.ib.b;
   const used = new Set(legs.filter((l) => l.pts).map((l) => l.floor));
   const bar = $('#floorbar');
   bar.innerHTML = '';
@@ -711,12 +809,13 @@ function renderFloorbar(legs) {
     return btn;
   };
   if (legs.length) mk('Route', 'route').classList.add('on');
-  for (const f of [...b.floors].reverse()) mk(f.id === 'ground' ? 'G' : String(f.level), f.id);
+  for (const f of [...b.floors].reverse()) mk(f.id === 'ground' ? 'G' : /^lower/i.test(f.name) ? 'LL' : String(f.level), f.id);
   const all = mk('All', 'all');
   if (!legs.length) all.classList.add('on');
 }
 
 function renderSteps(c) {
+  const b = state.ib.b;
   const steps = [];
   const dest = state.dest.room;
   steps.push([`Enter through the <b>${c.e.name}</b>.`, floorName(b, c.e.floor)]);
@@ -760,9 +859,9 @@ function renderSteps(c) {
 }
 
 // ---------- start ----------
-// Deep links (QR codes on signs, shared links): ?to=344, ?b=<osm id>, ?view=<osm id>, ?stop=, ?food=, ?car=1, ?park=1, ?explore=1
+// Deep links (QR codes on signs, shared links): ?to=344 (&in=gmu-research for rooms outside the main building), ?b=<osm id>, ?view=<osm id>, ?stop=, ?food=, ?car=1, ?park=1, ?explore=1
 if (params.get('to')) {
-  const r = b.rooms.find((x) => x.id.toLowerCase() === params.get('to').toLowerCase() && x.kind === 'room');
+  const r = findRoom(params.get('to'), params.get('in'));
   if (r) chooseRoom(r);
 } else if (params.get('b')) {
   const x = campus.buildings.find((y) => String(y.id) === params.get('b'));

@@ -5,6 +5,9 @@
 const ROOM_COST = 4;          // walking through rooms instead of corridors is discouraged
 const STAIR_COST = 45;        // per floor, in cell units (~10 m of walking)
 const ELEVATOR_COST = 70;     // waiting + riding
+// 8 neighbours: straight moves first (k < 4), then diagonals
+const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
+const DL = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
 
 export class Router {
   constructor(b) {
@@ -17,6 +20,7 @@ export class Router {
     this.g = new Float64Array(this.n);
     this.from = new Int32Array(this.n);
     this.seen = new Uint32Array(this.n); // generation stamps so we don't clear arrays per search
+    this.closed = new Uint32Array(this.n);
     this.gen = 0;
     this.links = [];
     for (const l of b.links) {
@@ -26,9 +30,11 @@ export class Router {
       this.links.push({ kind: l.kind, a: this.snap(ra.floor, ra.label), b: this.snap(rb.floor, rb.label), ra, rb });
     }
     this.linkAt = new Map();
+    this.hasLink = new Uint8Array(this.n);
     for (const l of this.links) {
       push(this.linkAt, l.a, [l.b, l]);
       push(this.linkAt, l.b, [l.a, l]);
+      this.hasLink[l.a] = this.hasLink[l.b] = 1;
     }
   }
 
@@ -58,36 +64,64 @@ export class Router {
   }
 
   route(start, goal, { stepFree = false } = {}) {
-    const { w, per, cells, g, from, seen } = this;
-    const gen = ++this.gen;
+    const { w, per } = this;
     const gx = goal % per % w, gy = Math.floor(goal % per / w), gf = Math.floor(goal / per);
     const heur = (i) => {
-      const r = i % per;
-      return Math.hypot(r % w - gx, Math.floor(r / w) - gy) + Math.abs(Math.floor(i / per) - gf) * STAIR_COST * 0.9;
+      const r = i % per, dx = r % w - gx, dy = ((r / w) | 0) - gy; // (Math.hypot is slow in hot loops)
+      return Math.sqrt(dx * dx + dy * dy) + Math.abs(((i / per) | 0) - gf) * STAIR_COST * 0.9;
     };
+    const gen = this.search(start, heur, (cur) => cur === goal, stepFree);
+    if (this.seen[goal] !== gen) return null;
+    const cellsPath = [];
+    for (let i = goal; i !== -1; i = this.from[i]) cellsPath.push(i);
+    cellsPath.reverse();
+    return this.toLegs(cellsPath);
+  }
+
+  /**
+   * Routes from every start to one goal in a single search: it grows outward from the goal until every
+   * start is reached. (Path costs are symmetric apart from the first/last cell, which doesn't matter here.)
+   * Returns an array of legs (or null) per start.
+   */
+  routeMany(starts, goal, { stepFree = false } = {}) {
+    const want = new Set(starts);
+    const gen = this.search(goal, () => 0, (cur) => want.delete(cur) && want.size === 0, stepFree);
+    return starts.map((s) => {
+      if (this.seen[s] !== gen) return null;
+      const cellsPath = [];
+      for (let i = s; i !== -1; i = this.from[i]) cellsPath.push(i); // from[] already points toward the goal
+      return this.toLegs(cellsPath);
+    });
+  }
+
+  // Best-first search over the stacked grids (A* with a heuristic, Dijkstra with heur = 0).
+  search(source, heur, done, stepFree) {
+    const { w, h, per, cells, g, from, seen, closed, hasLink } = this;
+    const gen = ++this.gen;
     const heap = new Heap();
-    g[start] = 0; from[start] = -1; seen[start] = gen;
-    heap.push(start, heur(start));
-    const D = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2]];
+    g[source] = 0; from[source] = -1; seen[source] = gen;
+    heap.push(source, heur(source));
     while (heap.size) {
       const cur = heap.pop();
-      if (cur === goal) break;
+      if (closed[cur] === gen) continue; // a stale queue entry: this cell was already finished
+      closed[cur] = gen;
+      if (done(cur)) break;
       const gc = g[cur];
       const r = cur % per, x = r % w, y = (r - x) / w, base = cur - r;
-      for (const [dx, dy, len] of D) {
-        const X = x + dx, Y = y + dy;
-        if (X < 0 || Y < 0 || X >= w || Y >= this.h) continue;
+      for (let k = 0; k < 8; k++) {
+        const X = x + DX[k], Y = y + DY[k];
+        if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
         const ni = base + Y * w + X;
         const c = cells[ni];
-        if (!c) continue;
-        if (dx && dy && (!cells[base + y * w + X] || !cells[base + Y * w + x])) continue; // no corner cutting
-        const ng = gc + len * (c === 2 ? ROOM_COST : 1);
+        if (!c || closed[ni] === gen) continue;
+        if (k >= 4 && (!cells[base + y * w + X] || !cells[base + Y * w + x])) continue; // no corner cutting
+        const ng = gc + DL[k] * (c === 2 ? ROOM_COST : 1);
         if (seen[ni] !== gen || ng < g[ni]) {
           seen[ni] = gen; g[ni] = ng; from[ni] = cur;
           heap.push(ni, ng + heur(ni));
         }
       }
-      const ls = this.linkAt.get(cur);
+      const ls = hasLink[cur] ? this.linkAt.get(cur) : null; // only ~70 cells are stairs/elevators
       if (ls) for (const [ni, l] of ls) {
         if (stepFree && l.kind === 'stair') continue;
         const floors = Math.abs(Math.floor(ni / per) - Math.floor(cur / per));
@@ -98,11 +132,7 @@ export class Router {
         }
       }
     }
-    if (seen[goal] !== gen) return null;
-    const cellsPath = [];
-    for (let i = goal; i !== -1; i = from[i]) cellsPath.push(i);
-    cellsPath.reverse();
-    return this.toLegs(cellsPath);
+    return gen;
   }
 
   // Split a cell path into per-floor polylines joined by vertical transitions.

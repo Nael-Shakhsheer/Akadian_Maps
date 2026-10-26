@@ -19,7 +19,18 @@ export class WalkGraph {
   }
 
   // Closest point on the network to [lat, lon]: which edge, where along it, and how far away.
-  snap([lat, lon], { stepFree = false } = {}) {
+  // Remembered for the last few points: one GPS update snaps you once instead of once per entrance.
+  snap(ll, { stepFree = false } = {}) {
+    const key = `${ll[0].toFixed(7)},${ll[1].toFixed(7)},${stepFree}`;
+    this.snaps ||= new Map();
+    if (this.snaps.has(key)) return this.snaps.get(key);
+    const s = this.snapNow(ll, stepFree);
+    this.snaps.set(key, s);
+    if (this.snaps.size > 40) this.snaps.delete(this.snaps.keys().next().value);
+    return s;
+  }
+
+  snapNow([lat, lon], stepFree) {
     const kx = KX(this.lat0);
     let best = null;
     this.edges.forEach((e, ei) => {
