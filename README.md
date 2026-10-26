@@ -84,6 +84,7 @@ The engine is built so that a school's non-public schematics can be processed wi
   - One search box covers rooms, buildings, food and bus stops. Exact room numbers rank first, and Enter opens the top result.
   - Category buttons cover Food, Bus, Restrooms, Study rooms, Computer labs and Buildings.
   - "Explore the map" opens the map without a destination.
+  - **Saved places:** up to 5 favourites (a classroom, the bus stop home, lunch). Tap ☆ Save place on any destination, then one tap on the home screen gets directions. Remove one with ✕. Stored only on the device.
   - The last 5 places are kept on the device as Recent.
   - The phone's back gesture, the browser's back button and Esc all step back a screen.
   - A loading screen shows while the map loads, and a clear error with "Try again" appears if it can't.

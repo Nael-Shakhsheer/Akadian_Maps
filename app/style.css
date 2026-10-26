@@ -214,6 +214,23 @@ button { font: inherit; color: inherit; }
 .recent:hover { border-color: var(--accent); }
 .recent span { display: block; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .recent small { display: block; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* saved places (5 slots) */
+.list-title .count { font-weight: 500; letter-spacing: 0; margin-left: 4px; }
+.saved-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.saved { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; background: var(--card); min-height: 48px; }
+.saved .go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: none; border: 0;
+  color: inherit; text-align: left; cursor: pointer; border-radius: 10px; font: inherit; }
+.saved:has(.go:hover) { border-color: var(--accent); }
+.saved .ico { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 8px; background: #f0a04a22; font-size: 15px; }
+.saved .txt { min-width: 0; flex: 1; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.saved .txt small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.saved .arrow { color: var(--accent); flex: none; }
+.saved .rm { flex: none; width: 40px; background: none; border: 0; border-left: 1px solid var(--line); color: var(--muted); cursor: pointer; font-size: 13px; }
+.saved .rm:hover { color: var(--text); }
+.saved.empty { background: transparent; border-style: dashed; align-items: center; gap: 10px; padding: 7px 10px; color: var(--muted); min-height: 44px; }
+.saved.empty .ico { background: transparent; border: 1px dashed var(--line); color: var(--muted); }
+.saved.empty .txt { font-weight: 500; }
+.btn.save-btn.on { color: var(--accent-hi); border-color: var(--accent); }
 .results li.empty { cursor: default; color: var(--muted); font-size: 14px; display: block; }
 .results li.empty:hover { transform: none; border-color: var(--line); }
 

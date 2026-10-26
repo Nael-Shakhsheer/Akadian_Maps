@@ -15,7 +15,6 @@ const FAR_FROM_CAMPUS = 3000; // m; beyond this we assume a demo and let you tap
 const DATA = window.AKADIAN_DATA || '/api/public'; // published maps, served read-only by the engine
 const params = new URLSearchParams(location.search);
 const CAMPUS = params.get('campus') || 'gmu';
-const QUICK = ['344', '229', '213', 'G26', '227E', '112', '321', '340'];
 const BROWSE = [['🍴', 'Food & coffee', 'food'], ['🚌', 'Bus & shuttle', 'bus'], ['🚻', 'Restrooms', 'restroom'],
   ['📚', 'Study rooms', 'study'], ['💻', 'Computer labs', 'computer lab'], ['🏛', 'Buildings', 'building']];
 
@@ -43,7 +42,7 @@ try {
   bootError(e.message.includes('fetch') ? 'Can’t reach the map server. Check your connection and try again.' : e.message);
   throw e;
 }
-const main = indoors[0]; // the main indoor building: home chips, demo start point
+const main = indoors[0]; // the main indoor building: links without a building, demo start point
 const ibByBld = new Map(indoors.map((ib) => [ib.bld.id, ib]));
 const ibOf = new Map(indoors.flatMap((ib) => ib.b.rooms.map((r) => [r, ib]))); // room -> its building
 const routingFor = (ib) => (ib.routing ||= new IndoorRouting(`${DATA}/${ib.bld.indoor}`, ib.b));
@@ -68,7 +67,7 @@ function walkRoute(from, to) {
 }
 
 // dest: room | building | point (bus stop, food outside mapped buildings, your car)
-const state = { dest: null, ib: null, user: null, demo: false, choice: null, perEntrance: [], arrivedOnce: false, mode: 'nav', url: '' };
+const state = { dest: null, ib: null, place: null, user: null, demo: false, choice: null, perEntrance: [], arrivedOnce: false, mode: 'nav', url: '' };
 
 function toast(msg) {
   const t = $('#toast');
@@ -185,11 +184,11 @@ function renderResults(q) {
   const words = q.split(/\s+/).filter(Boolean);
   let list = q
     ? searchable.map((s) => ({ s, k: score(s, q, words) })).filter((x) => x.k >= 0).sort((a, c) => a.k - c.k).map((x) => x.s)
-    : searchable.filter((s) => s.type === 'room' && s.r.name);
+    : []; // nothing typed: home shows your saved places instead
   let fuzzy = false;
   if (q && !list.length && q.length >= 4) { list = searchable.filter((s) => typoScore(s, words) >= 0); fuzzy = true; } // "did you mean"
-  $('#listTitle').textContent = q ? (list.length ? `${fuzzy ? 'Closest matches for' : 'Results for'} “${q}”` : '') : 'Popular places';
-  $('#chips').classList.toggle('hidden', !!q);
+  $('#listTitle').textContent = q ? (list.length ? `${fuzzy ? 'Closest matches for' : 'Results for'} “${q}”` : '') : '';
+  $('#saved').classList.toggle('hidden', !!q);
   $('#recent').classList.toggle('hidden', !!q);
   $('#results').innerHTML = '';
   topResult = null;
@@ -227,15 +226,6 @@ function renderResults(q) {
 $('#q').addEventListener('input', (e) => renderResults(e.target.value));
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter' && topResult) { e.preventDefault(); topResult(); } });
 
-for (const id of QUICK) {
-  const r = main?.b.rooms.find((x) => x.id === id);
-  if (!r) continue;
-  const c = document.createElement('button');
-  c.className = 'chip';
-  c.textContent = r.name ? r.name.split(' (')[0].split(' / ')[0] : `Room ${r.id}`;
-  c.onclick = () => chooseRoom(r);
-  $('#chips').append(c);
-}
 for (const [icon, label, q] of BROWSE) {
   const c = document.createElement('button');
   c.className = 'chip browse';
@@ -255,6 +245,7 @@ $('#openExplore').onclick = () => openExplore();
 const RECENT_KEY = `akadian:recent:${CAMPUS}`;
 function recents() { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch { return []; } }
 function remember(kind, key, title, sub) {
+  setPlace({ kind, key, title, sub });
   const list = recents().filter((r) => !(r.kind === kind && r.key === key));
   list.unshift({ kind, key, title, sub });
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5))); } catch {}
@@ -278,8 +269,65 @@ function findRoom(id, inBld) {
 const roomKey = (room, ib) => (ib === main ? room.id : `${ib.b.building.id}|${room.id}`);
 const roomUrl = (room, ib) => `?to=${encodeURIComponent(room.id)}${ib === main ? '' : `&in=${ib.b.building.id}`}`;
 
+// ---------- saved places: up to 5 favourites for one-tap directions (this device only) ----------
+const SAVED_KEY = `akadian:saved:${CAMPUS}`;
+const SAVED_MAX = 5;
+const KIND_ICON = { room: '📍', building: '🏛', stop: '🚌', food: '🍴' };
+function savedPlaces() { try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; } catch { return []; } }
+function storeSaved(list) { try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); return true; } catch { return false; } }
+const sameP = (a, c) => a && c && a.kind === c.kind && a.key === c.key;
+
+// The place on screen (what "Save place" saves); null for things you can't save, like your car.
+function setPlace(p) {
+  state.place = p;
+  for (const id of ['#saveOut', '#saveIn']) {
+    const btn = $(id), on = savedPlaces().some((s) => sameP(s, p));
+    btn.classList.toggle('hidden', !p);
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '★ Saved' : '☆ Save place';
+    btn.setAttribute('aria-pressed', on);
+  }
+}
+function toggleSaved() {
+  const p = state.place;
+  if (!p) return;
+  let list = savedPlaces();
+  if (list.some((s) => sameP(s, p))) {
+    list = list.filter((s) => !sameP(s, p));
+    toast('Removed from saved places');
+  } else if (list.length >= SAVED_MAX) {
+    return toast(`You can save ${SAVED_MAX} places. Remove one on the home screen first.`);
+  } else {
+    list.push(p);
+    toast(`Saved: ${p.title}`);
+  }
+  if (!storeSaved(list)) toast('Couldn’t save on this device (private browsing?)');
+  setPlace(p);
+}
+$('#saveOut').onclick = toggleSaved;
+$('#saveIn').onclick = toggleSaved;
+
+function renderSaved() {
+  const list = savedPlaces();
+  const slots = Array.from({ length: SAVED_MAX }, (_, i) => list[i]);
+  const firstEmpty = list.length;
+  $('#saved').innerHTML = `<h2 class="list-title">Saved places <span class="count">${list.length}/${SAVED_MAX}</span></h2>
+    <ol class="saved-list">${slots.map((p, i) => p
+    ? `<li class="saved"><button class="go" data-i="${i}"><span class="ico" aria-hidden="true">${KIND_ICON[p.kind] || '📍'}</span>
+        <span class="txt">${p.title}<small>${p.sub || ''}</small></span><span class="arrow" aria-hidden="true">→</span></button>
+        <button class="rm" data-rm="${i}" aria-label="Remove ${p.title} from saved places" title="Remove">✕</button></li>`
+    : `<li class="saved empty"><span class="ico" aria-hidden="true">☆</span><span class="txt">Empty slot${i === firstEmpty
+      ? '<small>Pick a place, then tap ☆ Save place</small>' : ''}</span></li>`).join('')}</ol>`;
+  $('#saved').querySelectorAll('[data-i]').forEach((el) => (el.onclick = () => openRecent(list[el.dataset.i])));
+  $('#saved').querySelectorAll('[data-rm]').forEach((el) => (el.onclick = () => {
+    storeSaved(list.filter((_, i) => i !== Number(el.dataset.rm)));
+    renderSaved();
+  }));
+}
+
 function renderHome() {
   renderCarCard();
+  renderSaved();
   const list = recents();
   $('#recent').innerHTML = list.length ? `<h2 class="list-title">Recent</h2><div class="recent-row">${list.map((r, i) =>
     `<button class="recent" data-i="${i}"><span>${r.title}</span><small>${r.sub || ''}</small></button>`).join('')}</div>` : '';
@@ -366,6 +414,7 @@ function goOutdoor(bld) {
 
 function openExplore() {
   state.dest = null;
+  setPlace(null);
   state.url = '?explore=1';
   outdoor.setRoute(null); outdoor.setPoints([]); outdoor.focus(null); outdoor.select(null);
   sheetMode('explore');
@@ -569,6 +618,7 @@ function openBuilding(bld) {
     state.dest = { type: 'building', bld, title: bld.name || 'Building' };
     state.ib = ibByBld.get(bld.id);
     state.url = `?view=${bld.id}`;
+    setPlace({ kind: 'building', key: bld.id, title: state.dest.title, sub: 'Building' });
     setHeader(`${state.dest.title}<small>Indoor 3D map · tap a room for directions</small>`);
     return goIndoor();
   }
@@ -692,6 +742,7 @@ function renderCarCard() {
 let parkLevel = null;
 function openParkSheet() {
   state.dest = null;
+  setPlace(null);
   parkLevel = null;
   $('#parkNote').value = '';
   outdoor.setRoute(null); outdoor.setPoints([]); outdoor.focus(null); outdoor.select(null);
@@ -742,6 +793,7 @@ function walkToCar() {
     url: '?car=1', arrive: 'your car', share: false,
     beforeArrive: deck ? [`Go up to <b>Level ${spot.level}</b> of ${spot.lot} (stairs or elevator)`] : [],
   });
+  setPlace(null);
 }
 
 // ---------- indoor ----------

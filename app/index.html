@@ -49,9 +49,9 @@
     </div>
     <div id="carCard" class="car-card"></div>
     <div id="browse" class="chips" aria-label="Browse by category"></div>
+    <div id="saved"></div>
     <div id="recent"></div>
-    <h2 class="list-title" id="listTitle">Popular places</h2>
-    <div id="chips" class="chips"></div>
+    <h2 class="list-title" id="listTitle"></h2>
     <ul id="results" class="results"></ul>
   </section>
 
@@ -68,7 +68,7 @@
           <button id="fitRoute" class="btn secondary">Show whole route</button>
           <button id="arrived" class="btn primary">I'm at the entrance →</button>
         </div>
-        <div class="actions small-actions"><button id="shareBtn" class="btn ghost-sm">Share this place</button></div>
+        <div class="actions small-actions"><button id="saveOut" class="btn ghost-sm save-btn hidden" aria-pressed="false">☆ Save place</button><button id="shareBtn" class="btn ghost-sm">Share this place</button></div>
         <ol id="walkSteps" class="steps walk" aria-label="Walking directions"></ol>
       </div>
       <!-- browsing the map with no destination -->
@@ -117,6 +117,7 @@
     <div class="sheet">
       <button class="back" data-back="outdoor">← Back to map</button>
       <div class="dest" id="destIn"></div>
+      <div class="actions small-actions"><button id="saveIn" class="btn ghost-sm save-btn hidden" aria-pressed="false">☆ Save place</button></div>
       <ol id="steps" class="steps" aria-label="Directions inside"></ol>
     </div>
   </section>
