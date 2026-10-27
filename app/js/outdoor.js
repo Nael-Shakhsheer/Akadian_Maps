@@ -20,7 +20,7 @@ const POINT_LAYERS = { transit: ['transit-glow', 'transit-line', 'stops', 'stop-
 const FOOD_SPLIT_ZOOM = 18.3; // a building with several spots shows one icon until you zoom in this far
 
 export class OutdoorMap {
-  constructor(container, campus, { campusId, data, onBuildingClick, onMapClick, onStopClick, onFoodClick } = {}) {
+  constructor(container, campus, { campusId, data, onBuildingClick, onMapClick, onStopClick, onFoodClick, stopNote } = {}) {
     const base = new URL(data, location.href).href.replace(/\/$/, ''); // MapLibre wants absolute URLs
     this.campus = campus;
     this.enabled = new Set(CATEGORIES.map((c) => c.id));
@@ -236,8 +236,9 @@ export class OutdoorMap {
       const nets = s.networks.filter((n) => !s.lines.length || n === 'Mason Shuttles' || n === 'Fairfax Connector');
       return `<b>${s.name}</b>${lines ? `<div class="chips-row">${lines}</div>` : ''}
         ${nets.length ? `<small>${nets.join(' · ')}</small>` : ''}
+        ${stopNote?.(s) ? `<small class="next-bus">${stopNote(s)}</small>` : ''}
         ${full ? `<small>${[s.shelter && 'Shelter', s.bays > 1 && `${s.bays} bays`].filter(Boolean).join(' · ')}</small>
-        <button class="btn primary sm walk-here">Walk here</button>` : ''}`;
+        <button class="btn primary sm walk-here">${stopNote?.(s) ? 'Bus times & walk here' : 'Walk here'}</button>` : ''}`;
     };
     this.map.on('mousemove', 'stops', (e) => {
       if (this.stopPopup.isOpen()) return;
@@ -386,6 +387,17 @@ export class OutdoorMap {
       type: 'FeatureCollection',
       features: points.map((p) => ({ type: 'Feature', properties: { kind: p.kind }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })),
     });
+  }
+
+  // one bus line stands out (its timetable is open); null shows them all evenly again
+  focusLine(ref) {
+    if (!this.map.isStyleLoaded() || !this.map.getLayer('transit-line')) return; // the next render after ready applies it
+    const on = (a, b) => (ref ? ['case', ['==', ['get', 'ref'], ref], a, b] : a);
+    this.map.setPaintProperty('transit-line', 'line-opacity', on(1, 0.12));
+    this.map.setPaintProperty('transit-glow', 'line-opacity', on(0.55, 0.05));
+    this.map.setPaintProperty('transit-line', 'line-width', ref
+      ? ['case', ['==', ['get', 'ref'], ref], ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 6], ['interpolate', ['linear'], ['zoom'], 13, 1, 18, 3]]
+      : ['interpolate', ['linear'], ['zoom'], 13, 1, 18, 3]);
   }
 
   setRoute(lls) {

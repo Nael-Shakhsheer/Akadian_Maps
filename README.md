@@ -9,7 +9,7 @@ There are two parts:
 
 ## Run it
 
-You need Python 3.11+. Node is only needed to run `tests/test_parking.mjs`.
+You need Python 3.11+. Node is only needed to run the `.mjs` tests.
 
 **1. Install**
 
@@ -17,11 +17,13 @@ You need Python 3.11+. Node is only needed to run `tests/test_parking.mjs`.
 pip install -r engine/requirements.txt
 ```
 
-**2. Get GMU's public floor plans.** These belong to GMU, so they aren't stored in the repo. This downloads them from GMU's Student Centers site:
+**2. Get GMU's public floor plans and CUE's bus timetable.** These belong to GMU and the City of Fairfax, so they aren't stored in the repo. This downloads them from GMU's Student Centers site and the City's CUE page:
 
 ```bash
 python tools/fetch_gmu_sources.py
 ```
+
+The City's site may refuse scripted downloads. If the script prints `SKIP transit/cue-gtfs.zip`, open the [CUE Schedules and Maps page](https://www.fairfaxva.gov/Services/CUE-Bus/Schedules-and-Maps), download the GTFS file, and save it as `data/gmu/transit/cue-gtfs.zip`. Without it the map still builds, just without bus times.
 
 **3. Build and publish the GMU demo maps.** This builds the four indoor maps, the campus layer and the self-hosted basemap tiles into `engine_data/published/`:
 
@@ -44,7 +46,9 @@ The first time you open the studio, you create your passphrase. To also load the
 
 ```bash
 python tests/test_engine.py
+python tests/test_schedule.py
 node tests/test_parking.mjs
+node tests/test_buses.mjs
 ```
 
 **Demo on a phone (no Python needed):** the public app runs entirely in the browser, so a static copy works the same as the engine's public server: search, indoor and outdoor routes, 3D views, GPS, parking and saved places. The repo keeps one in `docs/`, served by GitHub Pages at **https://nael-shakhsheer.github.io/Akadian_Maps/**. Open it on the phone, then use the browser's **Add to Home Screen** to launch it like an app. GPS works because Pages uses https. To turn Pages on once: on GitHub, **Settings → Pages → Build and deployment → Deploy from a branch → `main`, `/docs` → Save**. After you change or publish maps, refresh the copy and push:
@@ -115,7 +119,8 @@ The engine is built so that a school's non-public schematics can be processed wi
   - Search tolerates typos ("chipolte" → Chipotle), and the Step-free setting is remembered on the device.
 - **Self-contained:** the public app loads nothing from outside your server. Map tiles and fonts for the campus area are downloaded once by the engine (studio: Campuses → Download basemap). MapLibre, Three.js and the Cinzel logo font are bundled in `app/vendor/`.
 - **Walking routes:** the engine compiles OpenStreetMap sidewalks, footpaths and crossings into a walking network. The app routes on it to whichever entrance gives the shortest total trip (outside + inside), and redraws the route as GPS updates. Step-free mode avoids stairs outdoors too. Turn-by-turn steps ("Turn left and cross Rivanna River Lane at the crosswalk", "Bear left onto the path by The HUB, passing David King Hall") list under the route. Tap one to fly the map there.
-- **Bus & shuttle:** stops and route lines from OpenStreetMap (CUE Green/Gold, Metrobus F23/F29/F50, the Mason Shuttles stops at the GMU Campus hub), drawn in each line's own color. Stops show which lines serve them and offer walking directions. Unnamed stops are named after their road and nearest building.
+- **Bus & shuttle:** stops and route lines from OpenStreetMap (CUE Green/Gold, Metrobus F23/F29/F50, the Mason Shuttles stops at the GMU Campus hub), drawn in each line's own color. Stops show which lines serve them and offer walking directions. Unnamed stops are named after their road and nearest building, or after CUE's own stop name.
+- **Bus times (CUE):** from CUE's published timetable (GTFS), built into the campus layer, so it works offline. A stop lists the next buses on each line and where they're headed ("Green 1 to Vienna Metro · 40 min · 9:36 PM · 10:36 PM"); the map card shows the next one. Tap a line to see the rest of that trip stop by stop with times, step to earlier or later buses, and see the line's hours from that stop (weekdays, Saturday, Sunday, about how often). The line is highlighted on the map. Times follow the feed's time zone (Fairfax), not the phone's. The engine's timetable step is `engine/pipeline/schedule.py`; feeds are listed under `gtfs` in the campus hints (studio: Campuses → Fetch downloads them). Rebuild only the campus layer with `python tools/seed_gmu.py --campus-only`.
 - **Food & coffee:** 25 spots from OpenStreetMap (Panda Express, Manhattan Pizza, Starbucks, Dunkin', Chick-fil-A, the Johnson Center food court…). Each card shows the type, building and hours, and spots search by name or cuisine. Spots inside a building with an indoor map get indoor directions to the counter. Floors that OSM doesn't record go in the studio's campus hints (e.g. `Starbucks@Johnson Center: 0`).
 - **Tap any building for its 3D model.** Buildings with an indoor map (the Johnson Center, Research Hall, Merten Hall, The HUB) open straight into it. Every other building gets a 3D model from its real outline, at true scale. It has a glass floor per level in its category color, floor buttons to isolate a level, and pins for the food spots inside. Parking decks show open levels on pillars, with your car on its level if you saved it there. The card lists food inside, bus stops within 250 m, and "Walk here". Link: `?view=<OSM id>`.
 - **Parking spot saver:** "Save where I parked" records your spot, the deck level and an optional note, stored only on the device (localStorage). Nothing goes to the server. When GPS sees you go from driving to walking inside a campus lot, the app offers to save the spot. "Walk to car" gives turn-by-turn directions back, ending with "Go up to Level 3 of …". The car is drawn as a small glowing orange 3D model at its exact spot and level, lined up with the lot's rows, with no label. On the campus map, the deck holding it turns to glass so the car shows through. In the deck's 3D view, the camera flies straight to the car's level. A "My car" button sits on the map.
@@ -134,13 +139,15 @@ The engine is built so that a school's non-public schematics can be processed wi
 app/                    public web app (served by the engine)
 engine/                 private engine: server.py, vault.py, store.py, pipeline/, admin_ui/
 engine_data/            engine home (encrypted projects + public published maps)
-tools/fetch_gmu_sources.py  downloads GMU's public floor plans (not stored in git)
+tools/fetch_gmu_sources.py  downloads GMU's public floor plans and CUE's timetable (not stored in git)
 tools/prepare_building.py  renders + OCRs a building's plan PDFs (room labels to check by hand)
 tools/seed_gmu.py       loads the GMU demo from public sources
 tools/export_static.py  static copy of the public app + published maps (docs/, for GitHub Pages)
 docs/                   that static copy (generated; re-run the export instead of editing)
 tests/test_engine.py    end-to-end engine test (temp folder)
 tests/test_parking.mjs  parking auto-prompt + on-device storage (node)
+tests/test_schedule.py  GTFS timetable step (no engine dependencies)
+tests/test_buses.mjs    next departures, past midnight, day types (node)
 data/gmu/               public GMU sources: floor plan PDFs, directories, OSM extracts
 ```
 
@@ -157,5 +164,6 @@ data/gmu/               public GMU sources: floor plan PDFs, directories, OSM ex
 - Most campus footpaths are unnamed in OpenStreetMap. Outdoor directions name the road a sidewalk runs along or a crosswalk crosses, and otherwise use nearby buildings as landmarks. A few crosswalks still read "cross the street".
 - The basemap covers the campus plus about 3 km around it; the map can't be panned beyond that.
 - The parking auto-prompt only works while the app is open: a website can't watch GPS in the background. Deck levels are picked by hand, because GPS can't tell levels apart.
+- Bus times are CUE's published timetable, not live positions. Metrobus times need a free WMATA developer key (not set up yet), and Mason Shuttles has no public timetable feed. WMATA renamed its routes in June 2025 (Better Bus), so the F23/F29/F50 labels from OpenStreetMap may be out of date.
 - Bus, shuttle and food data is only as good as OpenStreetMap. Mason Shuttles route lines aren't mapped there, and some hours are wrong (e.g. Panda Express). The studio can't override names, hours or positions yet, only food-spot floors.
 - Building heights are estimated where OpenStreetMap has no floor counts. Adjust them in the campus settings.

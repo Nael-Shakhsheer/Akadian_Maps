@@ -7,6 +7,7 @@ from collections import Counter
 
 from .walk import compile_walk
 from .transit import compile_transit
+from .schedule import compile_schedule
 from .food import compile_food
 
 OVERPASS = "https://overpass-api.de/api/interpreter"
@@ -151,6 +152,10 @@ def compile_campus(name: str, raw: dict, hints: dict, indoor: dict) -> dict:
     s, w, n, e = bbox(raw["boundary"], margin_m=3000)
     ts, tw, tn, te = bbox(raw["boundary"], margin_m=400)
     transit = compile_transit(raw.get("transit", []), buildings, (tw, ts, te, tn), raw.get("walk", []))
+    if raw.get("gtfs"):
+        schedule = compile_schedule(raw["gtfs"], transit)
+        if schedule:
+            transit["schedule"] = schedule
     food = compile_food(raw.get("food", []), buildings, hints.get("food_levels"))
     return {
         "name": name,
@@ -164,6 +169,7 @@ def compile_campus(name: str, raw: dict, hints: dict, indoor: dict) -> dict:
         "attribution": "© OpenStreetMap contributors (ODbL)",
         "stats": {"buildings": dict(Counter(b["cat"] for b in buildings)), "areas": dict(Counter(a["cat"] for a in areas)),
                   "walk": {"junctions": len(walk["nodes"]), "segments": len(walk["edges"])},
-                  "transit": {"stops": len(transit["stops"]), "lines": sorted(transit["lines"])},
+                  "transit": {"stops": len(transit["stops"]), "lines": sorted(transit["lines"]),
+                              "timetables": sorted(transit.get("schedule", {}).get("routes", {}))},
                   "food": len(food)},
     }

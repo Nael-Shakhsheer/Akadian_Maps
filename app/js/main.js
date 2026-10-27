@@ -8,6 +8,7 @@ import { WalkGraph } from './walk.js';
 import { walkingSteps } from './directions.js';
 import { ParkingSpot, ParkDetector, describe, ago, carHeading, CAR_SVG } from './parking.js';
 import { fmtDist, fmtHeight, walkMins } from './units.js';
+import { Timetable, nowIn, fmtClock, fmtWait, place } from './buses.js';
 
 const $ = (s) => document.querySelector(s);
 const ARRIVE_RADIUS = 20;     // m from the entrance counts as "arrived"
@@ -112,6 +113,7 @@ function sheetMode(mode) {
   $('#exploreSheet').classList.toggle('hidden', mode !== 'explore');
   $('#parkSheet').classList.toggle('hidden', mode !== 'park');
   carFab.classList.toggle('hidden', mode === 'park');
+  if (mode !== 'nav') outdoor.focusLine(null);
 }
 
 // Step-free is an accessibility need, not a one-off: remember it on this device.
@@ -127,6 +129,8 @@ $('#stepFree').onchange = async () => {
 
 // ---------- search ----------
 const lineNames = (s) => s.lines.map((r) => campus.transit.lines[r]?.name || r).join(' · ');
+const timetable = campus.transit?.schedule ? new Timetable(campus.transit.schedule, campus.transit.stops) : null;
+const lineColour = (ref) => campus.transit.schedule?.routes[ref]?.colour || campus.transit.lines[ref]?.colour || '#2dd4bf';
 const searchable = [
   ...indoors.flatMap((ib) => ib.b.rooms
     .filter((r) => (r.kind === 'room' || r.kind === 'restroom') && !r.restricted)
@@ -364,8 +368,8 @@ function chooseBuilding(bld) {
 }
 
 // Somewhere you just walk to (a bus stop, a food spot outside mapped buildings, your car).
-function choosePoint({ title, sub, lat, lon, info, url, arrive, beforeArrive, share = true }) {
-  state.dest = { type: 'point', title, lat, lon, info, arrive, beforeArrive, share };
+function choosePoint({ title, sub, lat, lon, info, url, arrive, beforeArrive, share = true, stop = null }) {
+  state.dest = { type: 'point', title, lat, lon, info, arrive, beforeArrive, share, stop };
   state.arrivedOnce = false;
   state.perEntrance = [];
   state.url = url;
@@ -377,8 +381,60 @@ function chooseStop(stop) {
   remember('stop', stop.name, stop.name, lineNames(stop) || 'Bus stop');
   choosePoint({ title: stop.name, sub: lineNames(stop) || stop.networks.join(' · '), lat: stop.lat, lon: stop.lon,
     info: [stop.shuttle && 'Mason Shuttles', lineNames(stop), stop.shelter && 'sheltered'].filter(Boolean).join(' · '),
-    url: `?stop=${campus.transit.stops.indexOf(stop)}` });
+    url: `?stop=${campus.transit.stops.indexOf(stop)}`, stop });
 }
+
+// ---------- bus times at a stop (published timetable, not live) ----------
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const busView = { stop: null, key: null, i: 0 }; // the stop shown, and the line + departure opened in it (if any)
+
+function dayLabel(at) {
+  return at >= 2 * 1440 ? 'In 2 days ' : at >= 1440 ? 'Tomorrow ' : at < 0 ? 'Yesterday ' : '';
+}
+
+function renderBusTimes() {
+  const box = $('#busTimes');
+  const stop = state.mode === 'nav' ? state.dest?.stop : null;
+  const calls = stop && timetable ? timetable.calls(campus.transit.stops.indexOf(stop)) : [];
+  box.classList.toggle('hidden', !calls.length);
+  if (!calls.length) { outdoor.focusLine(null); return; }
+  if (busView.stop !== stop) Object.assign(busView, { stop, key: null, i: 0 });
+  const now = nowIn(timetable.tz);
+  const groups = timetable.departures(campus.transit.stops.indexOf(stop), now);
+  const chip = (ref) => `<span class="line-chip" style="--lc:${lineColour(ref)}">${esc(ref)}</span>`;
+  const g = busView.key && groups.find((x) => x.key === busView.key);
+  outdoor.focusLine(g ? g.ref : null);
+  if (!g) {
+    box.innerHTML = `<h3>Next buses <small>CUE timetable · not live</small></h3>`
+      + (groups.length ? groups.map((x) => {
+        const [first, ...more] = x.deps;
+        return `<button class="bus-row" data-key="${esc(x.key)}">${chip(x.ref)}
+          <span class="bus-to">to ${esc(x.to)}${x.via ? `<small>${esc(x.via)}</small>` : ''}</span>
+          <span class="bus-when"><b>${dayLabel(first.at)}${fmtWait(first.at, now.mins)}</b>
+            <small>${more.slice(0, 2).map((d) => (dayLabel(d.at) !== dayLabel(first.at) ? dayLabel(d.at).toLowerCase() : '') + fmtClock(d.at)).join(' · ')}</small></span></button>`;
+      }).join('') : '<p class="muted">No buses from this stop in the next day.</p>');
+    box.querySelectorAll('[data-key]').forEach((el) => (el.onclick = () => { busView.key = el.dataset.key; busView.i = 0; renderBusTimes(); }));
+    return;
+  }
+  busView.i = Math.min(busView.i, g.deps.length - 1);
+  const dep = g.deps[busView.i];
+  const ride = timetable.ride(dep);
+  const hours = timetable.hours(dep.call);
+  box.innerHTML = `<button class="link bus-back">← All buses here</button>
+    <div class="bus-head">${chip(g.ref)} <b>to ${esc(g.to)}</b>${g.via ? ` <span class="muted">${esc(g.via)}</span>` : ''}</div>
+    <div class="bus-pick">
+      <button class="btn ghost-sm" data-step="-1" ${busView.i ? '' : 'disabled'} aria-label="Earlier bus">‹</button>
+      <span>Leaves here <b>${dayLabel(dep.at).toLowerCase()}${fmtClock(dep.at)}</b> · ${fmtWait(dep.at, now.mins) === fmtClock(dep.at) ? '' : `in ${fmtWait(dep.at, now.mins)} · `}arrives ${esc(place(ride[ride.length - 1].name))} ${fmtClock(ride[ride.length - 1].at)}</span>
+      <button class="btn ghost-sm" data-step="1" ${busView.i < g.deps.length - 1 ? '' : 'disabled'} aria-label="Later bus">›</button>
+    </div>
+    <ol class="bus-stops">${ride.map((r, i) => `<li class="${i === 0 ? 'here' : r.campus ? 'campus' : ''}"><time>${fmtClock(r.at)}</time><span>${esc(r.name)}</span></li>`).join('')}</ol>
+    <h3>From this stop</h3>
+    <ul class="bus-hours">${hours.map((h) => `<li><b>${esc(h.days)}</b> ${fmtClock(h.first)}–${fmtClock(h.last)}${h.every ? ` · about every ${h.every} min` : ''}</li>`).join('')}</ul>
+    <p class="muted small-print">CUE's published timetable, not live bus positions. Times can change with traffic.</p>`;
+  box.querySelector('.bus-back').onclick = () => { busView.key = null; renderBusTimes(); };
+  box.querySelectorAll('[data-step]').forEach((el) => (el.onclick = () => { busView.i += +el.dataset.step; renderBusTimes(); }));
+}
+setInterval(() => { if (screen === 'outdoor' && !$('#busTimes').classList.contains('hidden')) renderBusTimes(); }, 30000);
 
 function chooseFood(f) {
   remember('food', `${f.name}@${f.lat}`, f.name, [f.kind, f.building].filter(Boolean).join(' · '));
@@ -409,7 +465,8 @@ function goOutdoor(bld) {
   sheetMode('nav');
   show('outdoor', { url: state.url });
   $('#shareBtn').classList.toggle('hidden', state.dest?.share === false);
-  outdoor.ready.then(() => { outdoor.select(bld); startGps(); pickTarget(); });
+  renderBusTimes(); // the timetable doesn't need the map; render again once it's up, to highlight the line
+  outdoor.ready.then(() => { outdoor.select(bld); startGps(); pickTarget(); renderBusTimes(); });
 }
 
 function openExplore() {
@@ -458,6 +515,13 @@ const outdoor = new OutdoorMap($('#map'), campus, {
     setUser(ll);
   },
   onStopClick: (stop) => chooseStop(stop),
+  // hover/tap card on a stop: the next bus from the timetable
+  stopNote: (stop) => {
+    if (!timetable) return '';
+    const now = nowIn(timetable.tz);
+    const g = timetable.departures(campus.transit.stops.indexOf(stop), now, 3)[0];
+    return g ? `Next: ${esc(g.ref)} to ${esc(g.to)}, ${fmtWait(g.deps[0].at, now.mins)}` : '';
+  },
   onFoodClick: (f) => chooseFood(f),
 });
 

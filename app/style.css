@@ -365,3 +365,34 @@ button:focus:not(:focus-visible) { outline: none; }
   #outdoor, #indoor { flex-direction: row; }
   .sheet { width: 400px; max-height: none; border-top: 0; border-left: 1px solid var(--line); order: 2; }
 }
+
+/* bus times at a stop (published timetable) */
+.bus-times { margin: 14px 0 4px; }
+.bus-times h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+.bus-times h3 small { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+.bus-row {
+  display: flex; width: 100%; gap: 10px; align-items: center; text-align: left; padding: 10px 12px; margin-bottom: 6px; min-height: 48px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.bus-row:hover { border-color: var(--accent); }
+.bus-row .line-chip, .bus-head .line-chip { flex: none; font-size: 12px; }
+.bus-to { flex: 1; min-width: 0; font-size: 14px; }
+.bus-to small, .bus-when small { display: block; color: var(--muted); font-size: 12px; }
+.bus-when { text-align: right; flex: none; font-size: 14px; }
+.bus-when b { color: var(--accent-hi); }
+.bus-back { margin-bottom: 8px; }
+.bus-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 15px; margin-bottom: 10px; }
+.bus-pick { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.bus-pick span { flex: 1; text-align: center; }
+.bus-pick .btn { flex: none; min-width: 44px; min-height: 44px; padding: 0; font-size: 20px; }
+.bus-pick .btn:disabled { opacity: .35; cursor: default; }
+.bus-stops { list-style: none; margin: 10px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--line); max-height: 320px; overflow-y: auto; }
+.bus-stops li { display: flex; gap: 12px; padding: 5px 0; font-size: 14px; color: var(--muted); position: relative; }
+.bus-stops li::before { content: ''; position: absolute; left: -20px; top: 11px; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.bus-stops li.campus { color: var(--text); }
+.bus-stops li.here { color: var(--text); font-weight: 600; }
+.bus-stops li.here::before { background: var(--accent); width: 10px; height: 10px; left: -21px; top: 10px; transform: rotate(45deg); border-radius: 1px; }
+.bus-stops time { flex: none; width: 74px; font-variant-numeric: tabular-nums; }
+.bus-hours { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.bus-hours li { padding: 3px 0; }
+.next-bus { color: var(--accent-hi) !important; }

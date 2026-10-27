@@ -3,17 +3,16 @@
 
     python tools/seed_gmu.py                 # asks for your engine passphrase, imports JC as an editable project, publishes
     python tools/seed_gmu.py --publish-only  # no vault needed: just builds and writes the public map files
+    python tools/seed_gmu.py --campus-only   # just the campus layer (buildings, paths, buses, food): no PDFs needed
 
-Only uses public material in data/gmu/ (GMU Student Centers PDFs, OpenStreetMap extracts).
+Only uses public material in data/gmu/ (GMU Student Centers PDFs, OpenStreetMap extracts, CUE's bus timetable).
 """
 import argparse, getpass, json, os, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from engine.vault import Vault
-from engine.store import Store
-from engine.pipeline import ingest, build as builder, campus as campus_pipe, basemap
+from engine.pipeline import campus as campus_pipe, basemap, schedule
 
 GMU = ROOT / "data/gmu"
 JC = GMU / "johnson-center"
@@ -69,7 +68,10 @@ HINTS = {
                "Peterson Family Health Sciences Hall": 5, "The HUB": 2, "Student Union 1": 3, "Concert Hall": 4},
     # Johnson Center directory: Starbucks is on the Ground floor; the food court is on Floor 1
     "food_levels": {"Starbucks@Johnson Center": 0},
+    # published bus timetables (GTFS): CUE, from the City of Fairfax
+    "gtfs": ["https://www.fairfaxva.gov/files/assets/city/v/2/public-works/documents/schedules-and-maps/cue-gtfs.zip"],
 }
+CUE_GTFS = GMU / "transit/cue-gtfs.zip"
 
 
 def jc_project():
@@ -173,12 +175,40 @@ def plan_project(cfg):
     }
 
 
+def campus_raw():
+    load = lambda name: json.loads((CAMPUS / name).read_text(encoding="utf-8"))["elements"]
+    raw = {"boundary": load("boundary.json")[0], "buildings": load("buildings-raw.json"), "areas": load("areas-raw.json"),
+           "walk": load("walk-raw.json"), "transit": load("transit-raw.json"), "food": load("food-raw.json"), "gtfs": []}
+    if CUE_GTFS.exists():
+        raw["gtfs"].append(schedule.read_gtfs(CUE_GTFS.read_bytes(), HINTS["gtfs"][0]))
+    else:
+        print("No bus timetable: run  python tools/fetch_gmu_sources.py  to download CUE's.")
+    return raw
+
+
+def campus_layer(indoor, raw=None):
+    return campus_pipe.compile_campus("George Mason University – Fairfax", raw or campus_raw(), HINTS, indoor)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--home", default=str(ROOT / "engine_data"))
     ap.add_argument("--publish-only", action="store_true", help="skip the vault; only write the public map files")
+    ap.add_argument("--campus-only", action="store_true", help="only rebuild and publish the campus layer (implies --publish-only)")
     a = ap.parse_args()
     home = Path(a.home)
+    if a.campus_only:
+        projects = [jc_project()] + [plan_project(cfg) for cfg in OTHER]
+        camp = campus_layer({str(p["osm_way"]): f"buildings/{p['id']}.json" for p in projects})
+        print(f"GMU campus: {camp.pop('stats')}")
+        out = home / "published/campus"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "gmu.json").write_text(json.dumps(camp, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+        print(f"Published {out / 'gmu.json'}")
+        return
+    from engine.vault import Vault
+    from engine.store import Store
+    from engine.pipeline import ingest, build as builder
     missing = [f for f in ("Ground", "First", "Second", "Third") if not (JC / f"source/floor-plans-pdf/JC-{f}-Floor-Plan.pdf").exists()]
     missing += [f[3] for cfg in OTHER for f in cfg["floors"] if not (GMU / cfg["slug"] / f"source/floor-plans-pdf/{f[3]}.pdf").exists()]
     if missing:
@@ -221,14 +251,8 @@ def main():
                 store.put_blob("projects", p["id"], f"debug-{fid}", d)
         print(f"{p['name']}: {report['rooms']} rooms, {report['links']} links, georef {report['georef']}")
 
-    raw = {"boundary": json.loads((CAMPUS / "boundary.json").read_text(encoding="utf-8"))["elements"][0],
-           "buildings": json.loads((CAMPUS / "buildings-raw.json").read_text(encoding="utf-8"))["elements"],
-           "areas": json.loads((CAMPUS / "areas-raw.json").read_text(encoding="utf-8"))["elements"],
-           "walk": json.loads((CAMPUS / "walk-raw.json").read_text(encoding="utf-8"))["elements"],
-           "transit": json.loads((CAMPUS / "transit-raw.json").read_text(encoding="utf-8"))["elements"],
-           "food": json.loads((CAMPUS / "food-raw.json").read_text(encoding="utf-8"))["elements"]}
-    indoor = {str(p["osm_way"]): f"buildings/{p['id']}.json" for p, _, _ in projects}
-    camp = campus_pipe.compile_campus("George Mason University – Fairfax", raw, HINTS, indoor)
+    raw = campus_raw()
+    camp = campus_layer({str(p["osm_way"]): f"buildings/{p['id']}.json" for p, _, _ in projects}, raw)
     stats = camp.pop("stats")
     store.publish("campus", "gmu", camp)
     if not a.publish_only:

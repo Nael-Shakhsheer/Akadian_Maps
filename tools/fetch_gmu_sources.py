@@ -1,6 +1,7 @@
-"""Download GMU's public floor plans (and Johnson Center directories) from the Student Centers site.
+"""Download GMU's public floor plans (and Johnson Center directories) from the Student Centers site,
+and CUE's published bus timetable (GTFS) from the City of Fairfax.
 
-These files belong to George Mason University, so they aren't stored in this repository.
+These files belong to George Mason University and the City of Fairfax, so they aren't stored in this repository.
 Run this once after cloning, before tools/seed_gmu.py:
 
     python tools/fetch_gmu_sources.py
@@ -29,7 +30,11 @@ FILES = {
     "merten-hall/source/floor-plans-pdf/Merten-1.pdf": f"{BASE}/2020/11/Merten-First-Floor-Plan.pdf",
     # The HUB: floor 1 (updated 2025)
     "the-hub/source/floor-plans-pdf/Hub-1.pdf": f"{BASE}/2025/03/Updated-THE-HUB-1.pdf",
+    # CUE bus timetable (Green 1/2, Gold 1/2), City of Fairfax
+    "transit/cue-gtfs.zip": "https://www.fairfaxva.gov/files/assets/city/v/2/public-works/documents/schedules-and-maps/cue-gtfs.zip",
 }
+# sites that refuse scripted downloads: where to get the file by hand instead
+BROWSER_ONLY = {"transit/cue-gtfs.zip": "https://www.fairfaxva.gov/Services/CUE-Bus/Schedules-and-Maps"}
 
 
 def main():
@@ -46,9 +51,15 @@ def main():
                     dest.write_bytes(r.read())
                 break
             except urllib.error.HTTPError as e:
+                if e.code == 403 and rel in BROWSER_ONLY:
+                    break
                 if e.code != 429 or attempt == 3:
                     raise
                 time.sleep(10 * (attempt + 1))  # the site rate-limits; back off and retry
+        if not dest.exists():
+            print(f"SKIP  {rel}: the site only allows downloads from a browser. Open\n"
+                  f"      {BROWSER_ONLY[rel]}\n      download the GTFS file there, and save it as {dest}")
+            continue
         print(f"got   {rel}  ({dest.stat().st_size // 1024} KB)")
         time.sleep(1.5)  # be polite
     print("Done. Next: python tools/seed_gmu.py --publish-only")

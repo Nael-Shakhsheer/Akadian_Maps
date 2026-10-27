@@ -6,6 +6,8 @@ engine_data/
 # GMU's floor-plan PDFs and directory images (download with: python tools/fetch_gmu_sources.py)
 data/gmu/*/source/floor-plans-pdf/
 data/gmu/*/source/directories/
+# CUE's bus timetable (City of Fairfax; download with the same script)
+data/gmu/transit/
 # Renders made from those PDFs
 data/gmu/*/plans/
 data/gmu/*/plan-images/
