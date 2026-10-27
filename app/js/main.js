@@ -937,7 +937,7 @@ if (params.get('to')) {
 renderHome();
 $('#boot').classList.add('hidden');
 
-// installable + works offline once visited (app shell, libraries, tiles)
+// installable + works offline once visited (app shell, libraries, tiles); relative, so it also works from a subfolder
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 }

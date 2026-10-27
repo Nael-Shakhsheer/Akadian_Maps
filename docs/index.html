@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>window.AKADIAN_DATA = 'data';</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Akadian Campus Maps</title>
+  <meta name="description" content="3D campus maps with turn-by-turn directions to any room.">
+  <meta name="theme-color" content="#16181d">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.js",
+        "three/addons/": "./vendor/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo" aria-hidden="true">A</span><div><strong>Akadian Maps</strong><small id="campusName">Loading…</small></div></div>
+    <label class="toggle" title="Routes avoid stairs and use elevators">
+      <input type="checkbox" id="stepFree"> <span aria-hidden="true">♿</span><span>Step-free</span>
+    </label>
+  </header>
+
+  <!-- loading / error screen -->
+  <div id="boot" class="boot" role="status" aria-live="polite">
+    <span class="logo big" aria-hidden="true">A</span>
+    <p id="bootMsg">Loading campus map…</p>
+    <button id="bootRetry" class="btn primary hidden">Try again</button>
+  </div>
+
+  <!-- Home: choose a destination -->
+  <section id="search" class="panel">
+    <p class="eyebrow" id="homeEyebrow">Campus map</p>
+    <h1>Where are you headed?</h1>
+    <div class="searchbox">
+      <input id="q" type="search" placeholder="Search rooms, buildings, food, bus stops" autocomplete="off" aria-label="Search the campus" enterkeyhint="go">
+    </div>
+    <div class="home-actions">
+      <button class="tile-btn" id="openExplore"><span class="ti">🗺</span><span>Explore the map<small>Tap any building for its 3D model</small></span></button>
+    </div>
+    <div id="carCard" class="car-card"></div>
+    <div id="browse" class="chips" aria-label="Browse by category"></div>
+    <div id="saved"></div>
+    <div id="recent"></div>
+    <h2 class="list-title" id="listTitle"></h2>
+    <ul id="results" class="results"></ul>
+  </section>
+
+  <!-- Outdoor: GPS to the best entrance -->
+  <section id="outdoor" class="panel hidden">
+    <div id="map"></div>
+    <div class="sheet">
+      <div id="navSheet">
+        <button class="back" data-back="search">← Change destination</button>
+        <div class="dest" id="destOut"></div>
+        <div class="gps"><span id="gpsStatus" class="muted"></span><button id="gpsRetry" class="link hidden">Use my location</button></div>
+        <div class="leg" id="outLeg"></div>
+        <div class="actions">
+          <button id="fitRoute" class="btn secondary">Show whole route</button>
+          <button id="arrived" class="btn primary">I'm at the entrance →</button>
+        </div>
+        <div class="actions small-actions"><button id="saveOut" class="btn ghost-sm save-btn hidden" aria-pressed="false">☆ Save place</button><button id="shareBtn" class="btn ghost-sm">Share this place</button></div>
+        <ol id="walkSteps" class="steps walk" aria-label="Walking directions"></ol>
+      </div>
+      <!-- browsing the map with no destination -->
+      <div id="exploreSheet" class="hidden">
+        <button class="back" data-back="search">← Back</button>
+        <div class="dest" id="exploreTitle">Campus map<small>Tap any building for its 3D model. Use Layers to show or hide categories.</small></div>
+        <div class="gps"><span id="gpsStatus2" class="muted"></span></div>
+        <div class="explore-grid">
+          <button data-q="food">🍴 Food & coffee</button>
+          <button data-q="bus">🚌 Bus stops</button>
+          <button data-q="restroom">🚻 Restrooms</button>
+          <button data-q="study">📚 Study rooms</button>
+        </div>
+      </div>
+      <!-- save where you parked (stored only on this device) -->
+      <div id="parkSheet" class="hidden">
+        <button class="back" data-back="search">← Back</button>
+        <div class="dest">Save your parking spot<small id="parkWhere">Finding your location…</small></div>
+        <div id="parkLevels" class="level-row hidden" role="group" aria-label="Deck level"></div>
+        <label class="park-note">Note (optional)<input id="parkNote" maxlength="60" placeholder="e.g. Row C, near the stairs"></label>
+        <div class="actions"><button id="parkSave" class="btn primary" disabled>Save spot</button></div>
+        <p class="muted small-print">Saved only on this device. Nothing is sent anywhere.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3D model of any campus building (tap a building on the map) -->
+  <section id="building" class="panel hidden">
+    <div id="shell" aria-label="3D model of the building"></div>
+    <div class="floorbar" id="shellFloors" aria-label="Floors"></div>
+    <div class="sheet">
+      <button class="back" data-back="outdoor">← Back to map</button>
+      <div class="dest" id="bldTitle"></div>
+      <div class="bld-facts" id="bldFacts"></div>
+      <div class="actions">
+        <button id="bldWalk" class="btn primary">Walk here</button>
+      </div>
+      <div id="bldLists"></div>
+    </div>
+  </section>
+
+  <!-- Indoor: 3D route from the entrance to the room -->
+  <section id="indoor" class="panel hidden">
+    <div id="scene" aria-label="3D indoor map"></div>
+    <div class="floorbar" id="floorbar" aria-label="Floors"></div>
+    <div class="sheet">
+      <button class="back" data-back="outdoor">← Back to map</button>
+      <div class="dest" id="destIn"></div>
+      <div class="actions small-actions"><button id="saveIn" class="btn ghost-sm save-btn hidden" aria-pressed="false">☆ Save place</button></div>
+      <ol id="steps" class="steps" aria-label="Directions inside"></ol>
+    </div>
+  </section>
+
+  <div id="parkPrompt" class="park-prompt hidden" role="status">
+    <div><b>Looks like you parked</b><small id="parkPromptWhere"></small></div>
+    <button class="btn primary" id="parkPromptYes">Save spot</button>
+    <button class="btn secondary" id="parkPromptNo" aria-label="Dismiss">✕</button>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/maplibre-gl/maplibre-gl.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
