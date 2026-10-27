@@ -1,6 +1,6 @@
 // App flow: pick a room or place -> GPS walks you there on the 3D campus -> 3D indoor route from the entrance.
 // GPS is only used outdoors; indoors the route starts from the entrance, so no indoor positioning is needed.
-import { loadBuilding, planToLatLng, latLngToPlan, metersBetween, roomTitle, floorName } from './building.js';
+import { loadBuilding, latLngToPlan, metersBetween, roomTitle, floorName } from './building.js';
 import { simplify } from './router.js';
 import { IndoorRouting } from './routing.js';
 import { OutdoorMap, nearestOnRing, CATEGORIES } from './outdoor.js';
@@ -470,6 +470,7 @@ function setGps(text, { retry = false } = {}) {
 $('#gpsRetry').onclick = () => { state.demo = false; startGps(); };
 
 let watchId = null;
+let offCampus = false; // GPS works but you're far away: tap the map for a start, and keep watching for when you arrive
 function startGps() {
   if (watchId !== null || state.demo) return;
   if (!('geolocation' in navigator)) return demoMode('Location isn’t available on this device.');
@@ -478,9 +479,15 @@ function startGps() {
     (p) => {
       const ll = [p.coords.latitude, p.coords.longitude];
       const o = main ? [main.b.building.origin.lat, main.b.building.origin.lon] : [campus.buildings[0].ring[0][1], campus.buildings[0].ring[0][0]];
-      if (metersBetween(ll, o) > FAR_FROM_CAMPUS) {
-        return demoMode('You’re not on campus.');
+      const away = metersBetween(ll, o);
+      if (away > FAR_FROM_CAMPUS) {
+        if (!offCampus && state.user) setUser(null); // just left campus: drop the last on-campus fix too
+        offCampus = state.demo = true; // the map doesn't reach that far, so never draw you there (or anywhere)
+        setGps(`You’re ${fmtDist(away)} from campus. Tap the map to choose your start.`);
+        if (state.mode === 'park') updateParkSheet();
+        return;
       }
+      if (offCampus) offCampus = state.demo = false; // you've arrived: real GPS takes over from any tapped start
       setGps(`Using your location (±${fmtDist(p.coords.accuracy)})`);
       parkDetector.add({ lat: ll[0], lon: ll[1], speed: p.coords.speed, t: p.timestamp });
       setUser(ll);
@@ -494,15 +501,15 @@ function demoMode(reason) {
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
   watchId = null;
   state.demo = true;
-  setGps(`${reason} Tap the map to choose your start.`, { retry: reason !== 'You’re not on campus.' });
-  if (!state.user && main) setUser(planToLatLng(main.b, 2600, -900)); // a spot a few hundred metres from the main building
+  setGps(`${reason} Tap the map to choose your start.`, { retry: true });
+  if (state.mode === 'park') updateParkSheet();
 }
 
 function setUser(ll) {
-  const moved = !state.user || metersBetween(state.user, ll) > 8;
+  const moved = !state.user || !ll || metersBetween(state.user, ll) > 8;
   state.user = ll;
   outdoor.setUser(ll);
-  meBtn.classList.remove('hidden');
+  meBtn.classList.toggle('hidden', !ll);
   if (state.mode === 'park') return updateParkSheet();
   if (moved) pickTarget(); // don't recompute (or refit the map) for GPS jitter
 }
@@ -752,7 +759,11 @@ function openParkSheet() {
 }
 
 function updateParkSheet(first = false) {
-  if (!state.user) { $('#parkWhere').textContent = 'Finding your location…'; $('#parkSave').disabled = true; return; }
+  if (!state.user) {
+    $('#parkWhere').textContent = state.demo ? 'Tap the map where you parked.' : 'Finding your location…';
+    $('#parkSave').disabled = true;
+    return;
+  }
   const [lat, lon] = state.user;
   const lot = parking.lotAt(lat, lon);
   $('#parkWhere').textContent = (lot ? `You're in ${lot.name}.` : 'Not inside a campus lot; the spot will be saved where you are.')

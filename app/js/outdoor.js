@@ -168,6 +168,7 @@ export class OutdoorMap {
     this.map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
     const el = document.createElement('div');
     el.className = 'me-dot';
+    el.innerHTML = '<i></i>'; // the diamond; the marker element itself is moved by MapLibre's transform
     this.me = new maplibregl.Marker({ element: el });
     this.popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, className: 'bld-popup' });
 
@@ -374,7 +375,8 @@ export class OutdoorMap {
     }
   }
 
-  setUser(ll) {
+  setUser(ll) { // null hides you
+    if (!ll) return void this.me.remove();
     this.me.setLngLat([ll[1], ll[0]]).addTo(this.map);
   }
 
