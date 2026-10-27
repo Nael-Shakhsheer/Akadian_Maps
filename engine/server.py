@@ -426,7 +426,7 @@ def admin_app(home: Path) -> FastAPI:
 # ======================================================================
 def public_app(home: Path) -> FastAPI:
     published = home / "published"
-    app = FastAPI(title="Akadian Maps", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Akadian Vertex", docs_url=None, redoc_url=None, openapi_url=None)
     # app files revalidate on every load (cheap with ETags) so an update reaches everyone right away;
     # map data and tiles set their own cache times
     _headers(app, {"Cache-Control": "no-cache"})

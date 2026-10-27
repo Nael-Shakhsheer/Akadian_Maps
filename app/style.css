@@ -27,12 +27,13 @@ button { font: inherit; color: inherit; }
   padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; gap: 10px; align-items: center; }
-.brand strong { font-size: 18px; }
 .brand small { display: block; color: var(--muted); font-size: 12px; }
-.logo {
-  width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--on-accent);
-  display: grid; place-items: center; font-weight: 800; font-size: 17px;
-}
+/* Akadian Vertex: a Cinzel A whose crossbar is the "you are here" diamond, beside the Cinzel wordmark */
+@font-face { font-family: 'Cinzel'; src: url('vendor/fonts/cinzel-600-latin.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+.mark { width: 38px; height: 38px; flex: none; color: var(--text); }
+.mark-gem { fill: var(--accent); }
+.wordmark { font-family: Cinzel, Georgia, serif; font-weight: 600; text-transform: uppercase; letter-spacing: .12em; font-size: 17px; }
+.wordmark span { color: var(--accent); font-size: 11px; letter-spacing: .4em; margin-left: 4px; }
 .toggle {
   display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; padding: 7px 12px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--card);
@@ -191,8 +192,13 @@ button { font: inherit; color: inherit; }
   position: fixed; inset: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 24px; color: var(--muted);
 }
-.logo.big { width: 56px; height: 56px; font-size: 30px; border-radius: 14px; animation: pulse 1.6s ease-in-out infinite; }
-@keyframes pulse { 50% { transform: scale(.92); opacity: .7; } }
+.boot-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 6px; color: var(--text); }
+.mark.big { width: 84px; height: 84px; }
+.mark.big .mark-gem { transform-box: fill-box; transform-origin: center; animation: gem 1.6s ease-in-out infinite; }
+@keyframes gem { 50% { transform: scale(1.25); } }
+.wordmark.big { font-size: 30px; }
+.wordmark.sub { font-size: 12px; letter-spacing: .5em; padding-left: .5em; color: var(--accent); }
+.boot-rule { width: 110px; height: 1px; background: var(--accent); }
 
 /* home */
 .home-actions { margin: 14px 0; }

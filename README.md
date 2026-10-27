@@ -1,4 +1,4 @@
-# Akadian Maps
+# Akadian Vertex
 
 3D campus maps with room-level directions. Prototype: George Mason University, with the 3D campus outdoors and four buildings indoors: the Johnson Center (4 floors, ~320 rooms), Research Hall (floors 1–4, ~235 rooms), Merten Hall (floor 1) and The HUB (lower level).
 
@@ -113,7 +113,7 @@ The engine is built so that a school's non-public schematics can be processed wi
   - The server gzips responses: about 0.5 MB on first visit, down from about 3.4 MB.
   - 3D rendering is capped at 1.5× pixel density on phones.
   - Search tolerates typos ("chipolte" → Chipotle), and the Step-free setting is remembered on the device.
-- **Self-contained:** the public app loads nothing from outside your server. Map tiles and fonts for the campus area are downloaded once by the engine (studio: Campuses → Download basemap). MapLibre and Three.js are bundled in `app/vendor/`.
+- **Self-contained:** the public app loads nothing from outside your server. Map tiles and fonts for the campus area are downloaded once by the engine (studio: Campuses → Download basemap). MapLibre, Three.js and the Cinzel logo font are bundled in `app/vendor/`.
 - **Walking routes:** the engine compiles OpenStreetMap sidewalks, footpaths and crossings into a walking network. The app routes on it to whichever entrance gives the shortest total trip (outside + inside), and redraws the route as GPS updates. Step-free mode avoids stairs outdoors too. Turn-by-turn steps ("Turn left and cross Rivanna River Lane at the crosswalk", "Bear left onto the path by The HUB, passing David King Hall") list under the route. Tap one to fly the map there.
 - **Bus & shuttle:** stops and route lines from OpenStreetMap (CUE Green/Gold, Metrobus F23/F29/F50, the Mason Shuttles stops at the GMU Campus hub), drawn in each line's own color. Stops show which lines serve them and offer walking directions. Unnamed stops are named after their road and nearest building.
 - **Food & coffee:** 25 spots from OpenStreetMap (Panda Express, Manhattan Pizza, Starbucks, Dunkin', Chick-fil-A, the Johnson Center food court…). Each card shows the type, building and hours, and spots search by name or cuisine. Spots inside a building with an indoor map get indoor directions to the counter. Floors that OSM doesn't record go in the studio's campus hints (e.g. `Starbucks@Johnson Center: 0`).
@@ -126,6 +126,7 @@ The engine is built so that a school's non-public schematics can be processed wi
 - **Indoor:** Three.js, using clean vector rooms at true scale with glowing outlines and a flowing route. Search covers rooms and restrooms in every mapped building ("restroom research", "1214"). Each building gets its own 3D view on first visit, and only the one on screen renders. Hover a room to see its name; click it to route there. A step-free toggle keeps routes to elevators.
 - **Deep links** (good for QR codes): `?to=344` for a room in the main building (the Johnson Center), `?to=405&in=gmu-research` for a room in another building, `?b=<OSM id>` for a building, `?campus=<id>`.
 - **Theme:** Memex (charcoal + `#f0a04a`). Tokens are in `app/style.css` and `THEME` in `app/js/indoor3d.js`.
+- **Logo:** a Cinzel "A" whose crossbar is the orange "you are here" diamond, next to the AKADIAN / VERTEX wordmark in Cinzel SemiBold. The mark is in `app/icons/mark.svg` (and `icon.svg` for the browser tab), with PNG app icons beside it. Cinzel is under the SIL Open Font License (`app/vendor/fonts/OFL-Cinzel.txt`).
 
 ## Layout
 
