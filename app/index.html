@@ -58,7 +58,19 @@
 
   <!-- Outdoor: GPS to the best entrance -->
   <section id="outdoor" class="panel hidden">
-    <div id="map"></div>
+    <div id="map">
+      <!-- turn-by-turn navigation (after Start): next turn on top, trip and End at the bottom -->
+      <div id="navBanner" class="nav-banner hidden" role="status" aria-live="polite"></div>
+      <button id="navRecenter" class="nav-recenter hidden">Re-center</button>
+      <div id="navBar" class="nav-bar hidden">
+        <button id="navEnd" class="nav-end" aria-label="End navigation"><span aria-hidden="true">✕</span></button>
+        <div class="nav-trip" id="navTrip"></div>
+        <button id="navOverview" class="nav-icon" aria-label="Show the whole route" title="Overview">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <button id="navVoice" class="nav-icon" aria-pressed="true" aria-label="Spoken directions" title="Spoken directions">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="mute" d="M17 9l5 6M22 9l-5 6"/></svg></button>
+      </div>
+    </div>
     <div class="sheet">
       <div id="navSheet">
         <button class="back" data-back="search">← Change destination</button>
@@ -66,8 +78,9 @@
         <div class="gps"><span id="gpsStatus" class="muted"></span><button id="gpsRetry" class="link hidden">Use my location</button></div>
         <div class="leg" id="outLeg"></div>
         <div class="actions">
+          <button id="startNav" class="btn primary start-btn" disabled>Start</button>
           <button id="fitRoute" class="btn secondary">Show whole route</button>
-          <button id="arrived" class="btn primary">I'm at the entrance →</button>
+          <button id="arrived" class="btn secondary">I'm at the entrance →</button>
         </div>
         <div class="actions small-actions"><button id="saveOut" class="btn ghost-sm save-btn hidden" aria-pressed="false">☆ Save place</button><button id="shareBtn" class="btn ghost-sm">Share this place</button></div>
         <section id="busTimes" class="bus-times hidden" aria-label="Bus times"></section>
@@ -118,6 +131,16 @@
     <div class="floorbar" id="floorbar" aria-label="Floors"></div>
     <div class="sheet">
       <button class="back" data-back="outdoor">← Back to map</button>
+      <!-- a room tapped in the 3D view -->
+      <div id="roomCard" class="room-card hidden" role="region" aria-label="Selected room">
+        <button id="roomClose" class="room-close" aria-label="Close room details">✕</button>
+        <div class="dest" id="roomTitle"></div>
+        <div class="actions">
+          <button id="roomGo" class="btn primary">Directions</button>
+          <button id="roomInside" class="btn secondary">Route from the entrance</button>
+        </div>
+        <div class="actions small-actions"><button id="roomSave" class="btn ghost-sm save-btn" aria-pressed="false">☆ Save place</button><button id="roomShare" class="btn ghost-sm">Share</button></div>
+      </div>
       <div class="dest" id="destIn"></div>
       <div class="actions small-actions"><button id="saveIn" class="btn ghost-sm save-btn hidden" aria-pressed="false">☆ Save place</button></div>
       <ol id="steps" class="steps" aria-label="Directions inside"></ol>

@@ -75,6 +75,8 @@ export class IndoorView {
     this.scene.add(this.routeGroup);
     this.hoverGroup = new THREE.Group();
     this.scene.add(this.hoverGroup);
+    this.selectGroup = new THREE.Group(); // the room whose card is open
+    this.scene.add(this.selectGroup);
 
     this.composer = new EffectComposer(r);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -333,13 +335,29 @@ export class IndoorView {
     const el = document.createElement('div');
     el.className = 'tag hover';
     const r = hit.room;
-    el.innerHTML = r ? `<b>${r.id}</b> ${r.name || ''}<small>Select to get directions</small>` : '<small>Unlabeled space</small>';
+    el.innerHTML = r ? `<b>${r.id}</b> ${r.name || ''}<small>Tap for details and directions</small>` : '<small>Unlabeled space</small>';
     const lbl = new CSS2DObject(el);
     let sx = 0, sz = 0;
     for (let i = 0; i < o.length; i += 2) { sx += o[i]; sz += o[i + 1]; }
     const [X, Z] = this.w(sx / (o.length / 2), sz / (o.length / 2));
     lbl.position.set(X, y + 2, Z);
     this.hoverGroup.add(lbl);
+  }
+
+  // Keep one room outlined (its card is open) and bring it into view; null clears it.
+  select(room) {
+    for (const o of [...this.selectGroup.children]) { o.geometry?.dispose(); this.selectGroup.remove(o); }
+    if (!room || room.space === undefined) return;
+    const fl = this.floors[this.b.floorIndex[room.floor]];
+    const o = fl.f.spaces[room.space].o;
+    const y = fl.group.position.y + ROOM_H + 0.06;
+    const glow = new THREE.Color(THEME.hover).multiplyScalar(4);
+    this.selectGroup.add(new THREE.LineSegments(this.outline([o], y), new THREE.LineBasicMaterial({ color: glow, toneMapped: false })));
+    this.selectGroup.add(new THREE.LineSegments(this.outline([o], fl.group.position.y + 0.08), new THREE.LineBasicMaterial({ color: glow, toneMapped: false })));
+    const pts = [];
+    for (let i = 0; i < o.length; i += 2) { const [X, Z] = this.w(o[i], o[i + 1]); pts.push(new THREE.Vector3(X, y, Z)); }
+    const c = new THREE.Box3().setFromPoints(pts).getCenter(new THREE.Vector3());
+    this.flyTo(c, Math.max(45, this.span * 0.35));
   }
 
   // ---------- camera ----------

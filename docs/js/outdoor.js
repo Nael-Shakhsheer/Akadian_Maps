@@ -168,8 +168,14 @@ export class OutdoorMap {
     this.map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
     const el = document.createElement('div');
     el.className = 'me-dot';
-    el.innerHTML = '<i></i>'; // the diamond; the marker element itself is moved by MapLibre's transform
+    el.innerHTML = '<b class="me-heading" hidden></b><i></i>'; // heading pointer + diamond; MapLibre moves the element itself
     this.me = new maplibregl.Marker({ element: el });
+    this.heading = null;
+    this.map.on('rotate', () => this.drawHeading());
+    // navigation: the camera follows you until you move the map yourself
+    for (const ev of ['dragstart', 'rotatestart', 'pitchstart', 'zoomstart']) {
+      this.map.on(ev, (e) => { if (e.originalEvent && this.following) { this.following = false; this.onFollowLost?.(); } });
+    }
     this.popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, className: 'bld-popup' });
 
     this.hoverId = null;
@@ -404,6 +410,28 @@ export class OutdoorMap {
     this.map.getSource('route')?.setData(lls ? { type: 'Feature', geometry: { type: 'LineString', coordinates: lls.map(([a, b]) => [b, a]) } } : empty());
   }
 
+  // Which way you're facing (degrees from north), drawn as a pointer on your marker; null hides it.
+  setHeading(deg) {
+    this.heading = deg;
+    this.drawHeading();
+  }
+  drawHeading() {
+    const b = this.me.getElement().querySelector('.me-heading');
+    b.hidden = this.heading == null;
+    if (this.heading != null) b.style.transform = `rotate(${this.heading - this.map.getBearing()}deg)`;
+  }
+
+  // Navigation camera: close, tilted, facing `bearing`, with you low on the screen (padding keeps the banner clear).
+  follow([lat, lon], bearing, { padding, instant = false } = {}) {
+    this.following = true;
+    this.map.easeTo({ center: [lon, lat], bearing: bearing ?? this.map.getBearing(), pitch: 60, zoom: 18.6,
+      padding: padding || { top: 0, bottom: 0, left: 0, right: 0 }, duration: instant || REDUCED() ? 0 : 900 });
+  }
+  stopFollowing() {
+    this.following = false;
+    this.map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 0 });
+  }
+
   center([lat, lon]) {
     this.map.easeTo({ center: [lon, lat], zoom: Math.max(this.map.getZoom(), 17.3), duration: 700 });
   }
@@ -417,13 +445,15 @@ export class OutdoorMap {
   fit(lls) {
     const b = new maplibregl.LngLatBounds();
     for (const [lat, lon] of lls) b.extend([lon, lat]);
-    this.map.fitBounds(b, { padding: 70, maxZoom: 17.5, pitch: 58, bearing: -28, duration: 1200 });
+    this.following = false;
+    this.map.fitBounds(b, { padding: 70, maxZoom: 17.5, pitch: 58, bearing: -28, duration: REDUCED() ? 0 : 1200 });
   }
 
   resize() { this.map.resize(); }
 }
 
 function empty() { return { type: 'FeatureCollection', features: [] }; }
+const REDUCED = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // A low-poly car as extruded boxes: body, cabin, wheels, lights. Same proportions as the 3D building view.
 const CAR_SCALE = 1.3, DECK_LEVEL_M = 3.8;

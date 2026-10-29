@@ -105,6 +105,13 @@ The engine is built so that a school's non-public schematics can be processed wi
   - "Use my location" retries GPS.
   - "Share this place" uses the phone's share sheet, or copies the link.
   - The Layers panel is collapsible, and collapsed by default on phones.
+- **Turn-by-turn navigation (Start):** the route preview has a **Start** button, like Google or Apple Maps. Then:
+  - the sheet drops away and the map follows you, close up and tilted, turned to the way you're facing (compass, else your walking direction, else the route);
+  - a banner on top shows the next turn with a live distance countdown and an arrow, plus "Then…" for the turn after;
+  - a bar at the bottom shows time left, distance and arrival time, with ✕ End, route Overview and a spoken-directions toggle (remembered on the device);
+  - turns are spoken ahead ("In 350 feet, turn left…") and again at the turn; your marker gets a heading pointer; the screen stays awake;
+  - moving the map yourself pauses following and shows **Re-center**; leaving the route reroutes (it's recomputed from where you are every few metres);
+  - at the destination it says you've arrived; for a room it hands over to the indoor route at the entrance. The back gesture ends navigation and stays on the map.
 - **Installable and offline:**
   - The app can be added to a phone's home screen (manifest and icons).
   - A service worker keeps it working with a weak campus signal. App files load fresh when online, and libraries, tiles and fonts come from the cache.
@@ -128,7 +135,7 @@ The engine is built so that a school's non-public schematics can be processed wi
   - Campus buildings are 3D. Everything off campus is flat.
   - Color filters for academic, residence halls, parking (highlighted), arena & athletics, and sports fields.
   - Road names appear from zoom 16 (main roads) and 17 (campus streets). Building and lot names fade in as you zoom.
-- **Indoor:** Three.js, using clean vector rooms at true scale with glowing outlines and a flowing route. Search covers rooms and restrooms in every mapped building ("restroom research", "1214"). Each building gets its own 3D view on first visit, and only the one on screen renders. Hover a room to see its name; click it to route there. A step-free toggle keeps routes to elevators.
+- **Indoor:** Three.js, using clean vector rooms at true scale with glowing outlines and a flowing route. Search covers rooms and restrooms in every mapped building ("restroom research", "1214"). Each building gets its own 3D view on first visit, and only the one on screen renders. Hover a room to see its name. Tap a room for its card: it's outlined and its floor shown, with **Directions from here** (the full trip: walk to the best entrance, then inside), **Route from the entrance** (when you're already inside), Save and Share. A step-free toggle keeps routes to elevators.
 - **Deep links** (good for QR codes): `?to=344` for a room in the main building (the Johnson Center), `?to=405&in=gmu-research` for a room in another building, `?b=<OSM id>` for a building, `?campus=<id>`.
 - **Theme:** Memex (charcoal + `#f0a04a`). Tokens are in `app/style.css` and `THEME` in `app/js/indoor3d.js`.
 - **Logo:** a Cinzel "A" whose crossbar is the orange "you are here" diamond, next to the AKADIAN / VERTEX wordmark in Cinzel SemiBold. The mark is in `app/icons/mark.svg` (and `icon.svg` for the browser tab), with PNG app icons beside it. Cinzel is under the SIL Open Font License (`app/vendor/fonts/OFL-Cinzel.txt`).
