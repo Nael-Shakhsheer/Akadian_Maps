@@ -7,6 +7,8 @@ engine_data/
 data/*/*/source/floor-plans-pdf/
 data/*/*/source/floor-maps/
 data/*/*/source/directories/
+# CUE's bus timetable (City of Fairfax; download with the same script)
+data/gmu/transit/
 # Renders made from those PDFs
 data/*/*/plans/
 data/*/*/plan-images/

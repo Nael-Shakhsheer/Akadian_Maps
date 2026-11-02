@@ -20,7 +20,7 @@ const POINT_LAYERS = { transit: ['transit-glow', 'transit-line', 'stops', 'stop-
 const FOOD_SPLIT_ZOOM = 18.3; // a building with several spots shows one icon until you zoom in this far
 
 export class OutdoorMap {
-  constructor(container, campus, { campusId, data, onBuildingClick, onMapClick, onStopClick, onFoodClick } = {}) {
+  constructor(container, campus, { campusId, data, onBuildingClick, onMapClick, onStopClick, onFoodClick, stopNote } = {}) {
     const base = new URL(data, location.href).href.replace(/\/$/, ''); // MapLibre wants absolute URLs
     this.campus = campus;
     this.enabled = new Set(CATEGORIES.map((c) => c.id));
@@ -168,7 +168,14 @@ export class OutdoorMap {
     this.map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
     const el = document.createElement('div');
     el.className = 'me-dot';
+    el.innerHTML = '<b class="me-heading" hidden></b><i></i>'; // heading pointer + diamond; MapLibre moves the element itself
     this.me = new maplibregl.Marker({ element: el });
+    this.heading = null;
+    this.map.on('rotate', () => this.drawHeading());
+    // navigation: the camera follows you until you move the map yourself
+    for (const ev of ['dragstart', 'rotatestart', 'pitchstart', 'zoomstart']) {
+      this.map.on(ev, (e) => { if (e.originalEvent && this.following) { this.following = false; this.onFollowLost?.(); } });
+    }
     this.popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, className: 'bld-popup' });
 
     this.hoverId = null;
@@ -235,8 +242,9 @@ export class OutdoorMap {
       const nets = s.networks.filter((n) => !s.lines.length || n === 'Mason Shuttles' || n === 'Fairfax Connector');
       return `<b>${s.name}</b>${lines ? `<div class="chips-row">${lines}</div>` : ''}
         ${nets.length ? `<small>${nets.join(' · ')}</small>` : ''}
+        ${stopNote?.(s) ? `<small class="next-bus">${stopNote(s)}</small>` : ''}
         ${full ? `<small>${[s.shelter && 'Shelter', s.bays > 1 && `${s.bays} bays`].filter(Boolean).join(' · ')}</small>
-        <button class="btn primary sm walk-here">Walk here</button>` : ''}`;
+        <button class="btn primary sm walk-here">${stopNote?.(s) ? 'Bus times & walk here' : 'Walk here'}</button>` : ''}`;
     };
     this.map.on('mousemove', 'stops', (e) => {
       if (this.stopPopup.isOpen()) return;
@@ -374,7 +382,8 @@ export class OutdoorMap {
     }
   }
 
-  setUser(ll) {
+  setUser(ll) { // null hides you
+    if (!ll) return void this.me.remove();
     this.me.setLngLat([ll[1], ll[0]]).addTo(this.map);
   }
 
@@ -386,8 +395,41 @@ export class OutdoorMap {
     });
   }
 
+  // one bus line stands out (its timetable is open); null shows them all evenly again
+  focusLine(ref) {
+    if (!this.map.isStyleLoaded() || !this.map.getLayer('transit-line')) return; // the next render after ready applies it
+    const on = (a, b) => (ref ? ['case', ['==', ['get', 'ref'], ref], a, b] : a);
+    this.map.setPaintProperty('transit-line', 'line-opacity', on(1, 0.12));
+    this.map.setPaintProperty('transit-glow', 'line-opacity', on(0.55, 0.05));
+    this.map.setPaintProperty('transit-line', 'line-width', ref
+      ? ['case', ['==', ['get', 'ref'], ref], ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 6], ['interpolate', ['linear'], ['zoom'], 13, 1, 18, 3]]
+      : ['interpolate', ['linear'], ['zoom'], 13, 1, 18, 3]);
+  }
+
   setRoute(lls) {
     this.map.getSource('route')?.setData(lls ? { type: 'Feature', geometry: { type: 'LineString', coordinates: lls.map(([a, b]) => [b, a]) } } : empty());
+  }
+
+  // Which way you're facing (degrees from north), drawn as a pointer on your marker; null hides it.
+  setHeading(deg) {
+    this.heading = deg;
+    this.drawHeading();
+  }
+  drawHeading() {
+    const b = this.me.getElement().querySelector('.me-heading');
+    b.hidden = this.heading == null;
+    if (this.heading != null) b.style.transform = `rotate(${this.heading - this.map.getBearing()}deg)`;
+  }
+
+  // Navigation camera: close, tilted, facing `bearing`, with you low on the screen (padding keeps the banner clear).
+  follow([lat, lon], bearing, { padding, instant = false } = {}) {
+    this.following = true;
+    this.map.easeTo({ center: [lon, lat], bearing: bearing ?? this.map.getBearing(), pitch: 60, zoom: 18.6,
+      padding: padding || { top: 0, bottom: 0, left: 0, right: 0 }, duration: instant || REDUCED() ? 0 : 900 });
+  }
+  stopFollowing() {
+    this.following = false;
+    this.map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 0 });
   }
 
   center([lat, lon]) {
@@ -403,13 +445,15 @@ export class OutdoorMap {
   fit(lls) {
     const b = new maplibregl.LngLatBounds();
     for (const [lat, lon] of lls) b.extend([lon, lat]);
-    this.map.fitBounds(b, { padding: 70, maxZoom: 17.5, pitch: 58, bearing: -28, duration: 1200 });
+    this.following = false;
+    this.map.fitBounds(b, { padding: 70, maxZoom: 17.5, pitch: 58, bearing: -28, duration: REDUCED() ? 0 : 1200 });
   }
 
   resize() { this.map.resize(); }
 }
 
 function empty() { return { type: 'FeatureCollection', features: [] }; }
+const REDUCED = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // A low-poly car as extruded boxes: body, cabin, wheels, lights. Same proportions as the 3D building view.
 const CAR_SCALE = 1.3, DECK_LEVEL_M = 3.8;

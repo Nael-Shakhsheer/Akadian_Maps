@@ -13,7 +13,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from .vault import Vault
 from .store import Store, check_slug, campus_index
-from .pipeline import ingest, build as builder, campus as campus_pipe, basemap
+from .pipeline import ingest, build as builder, campus as campus_pipe, basemap, schedule
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = ROOT / "app"
@@ -380,6 +380,13 @@ def admin_app(home: Path) -> FastAPI:
             log(f"Downloading public OpenStreetMap data for boundary way {c['boundary_way']}…")
             c["raw"] = campus_pipe.fetch(c["boundary_way"])
             log(f"{len(c['raw']['buildings'])} buildings, {len(c['raw']['areas'])} parking/sports areas.")
+            c["raw"]["gtfs"] = []
+            for url in c.get("hints", {}).get("gtfs", []):  # published bus timetables, listed in the campus hints
+                log(f"Downloading the bus timetable {url}…")
+                try:
+                    c["raw"]["gtfs"].append(schedule.fetch_gtfs(url))
+                except Exception as e:  # e.g. a site that refuses scripted downloads: the map still builds without it
+                    log(f"Couldn't download it ({e}); publishing without that timetable.")
             store.save("campuses", cid, c)
             return {"buildings": len(c["raw"]["buildings"]), "areas": len(c["raw"]["areas"])}
         return run_job("fetch", work)
@@ -426,7 +433,7 @@ def admin_app(home: Path) -> FastAPI:
 # ======================================================================
 def public_app(home: Path) -> FastAPI:
     published = home / "published"
-    app = FastAPI(title="Akadian Maps", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Akadian Vertex", docs_url=None, redoc_url=None, openapi_url=None)
     # app files revalidate on every load (cheap with ETags) so an update reaches everyone right away;
     # map data and tiles set their own cache times
     _headers(app, {"Cache-Control": "no-cache"})

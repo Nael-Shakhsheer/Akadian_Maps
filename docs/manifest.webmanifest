@@ -1,6 +1,6 @@
 {
-  "name": "Akadian Campus Maps",
-  "short_name": "Akadian",
+  "name": "Akadian Vertex",
+  "short_name": "Vertex",
   "description": "3D campus maps with turn-by-turn directions to any room.",
   "start_url": "./",
   "scope": "./",

@@ -1,4 +1,4 @@
-# Akadian Maps
+# Akadian Vertex
 
 3D campus maps with room-level directions. Two campuses so far, picked on the app's first screen:
 
@@ -12,7 +12,7 @@ There are two parts:
 
 ## Run it
 
-You need Python 3.11+. Node is only needed to run `tests/test_parking.mjs`.
+You need Python 3.11+. Node is only needed to run the `.mjs` tests.
 
 **1. Install**
 
@@ -20,7 +20,7 @@ You need Python 3.11+. Node is only needed to run `tests/test_parking.mjs`.
 pip install -r engine/requirements.txt
 ```
 
-**2. Get the public floor plans.** These belong to the universities, so they aren't stored in the repo. These download them from GMU's Student Centers site and VT Computer Science's space-planning page:
+**2. Get the public floor plans and CUE's bus timetable.** These belong to the universities and the City of Fairfax, so they aren't stored in the repo. These download them from GMU's Student Centers site, the City's CUE page and VT Computer Science's space-planning page:
 
 ```bash
 python tools/fetch_gmu_sources.py
@@ -29,6 +29,8 @@ python tools/fetch_gmu_sources.py
 ```bash
 python tools/fetch_vt_sources.py
 ```
+
+The City's site may refuse scripted downloads. If the GMU script prints `SKIP transit/cue-gtfs.zip`, open the [CUE Schedules and Maps page](https://www.fairfaxva.gov/Services/CUE-Bus/Schedules-and-Maps), download the GTFS file, and save it as `data/gmu/transit/cue-gtfs.zip`. Without it the map still builds, just without bus times.
 
 **3. Build and publish the demo maps.** These build the indoor maps, the campus layers and the self-hosted basemap tiles into `engine_data/published/`. Torgersen Hall's plans are prepared first:
 
@@ -59,7 +61,9 @@ The first time you open the studio, you create your passphrase. To also load the
 
 ```bash
 python tests/test_engine.py
+python tests/test_schedule.py
 node tests/test_parking.mjs
+node tests/test_buses.mjs
 ```
 
 **Demo on a phone (no Python needed):** the public app runs entirely in the browser, so a static copy works the same as the engine's public server: search, indoor and outdoor routes, 3D views, GPS, parking and saved places. The repo keeps one in `docs/`, served by GitHub Pages at **https://nael-shakhsheer.github.io/Akadian_Maps/**. Open it on the phone, then use the browser's **Add to Home Screen** to launch it like an app. GPS works because Pages uses https. To turn Pages on once: on GitHub, **Settings → Pages → Build and deployment → Deploy from a branch → `main`, `/docs` → Save**. After you change or publish maps, refresh the copy and push:
@@ -104,7 +108,7 @@ The engine is built so that a school's non-public schematics can be processed wi
 ## The app
 
 - **Getting around the app:**
-  - A plain launch opens on **Choose your campus** (GMU or Virginia Tech, under the Akadian logo). Shared links and QR codes skip it and open their campus directly, and "Change campus" on the home screen goes back to it. Every link carries its campus (`?campus=vt&to=2060`).
+  - A plain launch opens on **Choose your campus** (GMU or Virginia Tech, under the Akadian Vertex logo). Shared links and QR codes skip it and open their campus directly, and "Change campus" on the home screen goes back to it. Every link carries its campus (`?campus=vt&to=2060`).
   - One search box covers rooms, buildings, food and bus stops. Exact room numbers rank first, and Enter opens the top result.
   - Category buttons cover Food, Bus, Restrooms, Study rooms, Computer labs and Buildings.
   - "Explore the map" opens the map without a destination.
@@ -117,6 +121,13 @@ The engine is built so that a school's non-public schematics can be processed wi
   - "Use my location" retries GPS.
   - "Share this place" uses the phone's share sheet, or copies the link.
   - The Layers panel is collapsible, and collapsed by default on phones.
+- **Turn-by-turn navigation (Start):** the route preview has a **Start** button, like Google or Apple Maps. Then:
+  - the sheet drops away and the map follows you, close up and tilted, turned to the way you're facing (compass, else your walking direction, else the route);
+  - a banner on top shows the next turn with a live distance countdown and an arrow, plus "Then…" for the turn after;
+  - a bar at the bottom shows time left, distance and arrival time, with ✕ End, route Overview and a spoken-directions toggle (remembered on the device);
+  - turns are spoken ahead ("In 350 feet, turn left…") and again at the turn; your marker gets a heading pointer; the screen stays awake;
+  - moving the map yourself pauses following and shows **Re-center**; leaving the route reroutes (it's recomputed from where you are every few metres);
+  - at the destination it says you've arrived; for a room it hands over to the indoor route at the entrance. The back gesture ends navigation and stays on the map.
 - **Installable and offline:**
   - The app can be added to a phone's home screen (manifest and icons).
   - A service worker keeps it working with a weak campus signal. App files load fresh when online, and libraries, tiles and fonts come from the cache.
@@ -129,9 +140,10 @@ The engine is built so that a school's non-public schematics can be processed wi
   - The server gzips responses: about 0.5 MB on first visit, down from about 3.4 MB.
   - 3D rendering is capped at 1.5× pixel density on phones.
   - Search tolerates typos ("chipolte" → Chipotle), and the Step-free setting is remembered on the device.
-- **Self-contained:** the public app loads nothing from outside your server. Map tiles and fonts for the campus area are downloaded once by the engine (studio: Campuses → Download basemap). MapLibre and Three.js are bundled in `app/vendor/`.
+- **Self-contained:** the public app loads nothing from outside your server. Map tiles and fonts for the campus area are downloaded once by the engine (studio: Campuses → Download basemap). MapLibre, Three.js and the Cinzel logo font are bundled in `app/vendor/`.
 - **Walking routes:** the engine compiles OpenStreetMap sidewalks, footpaths and crossings into a walking network. The app routes on it to whichever entrance gives the shortest total trip (outside + inside), and redraws the route as GPS updates. Step-free mode avoids stairs outdoors too. Turn-by-turn steps ("Turn left and cross Rivanna River Lane at the crosswalk", "Bear left onto the path by The HUB, passing David King Hall") list under the route. Tap one to fly the map there.
-- **Bus & shuttle:** stops and route lines from OpenStreetMap (CUE Green/Gold, Metrobus F23/F29/F50, the Mason Shuttles stops at the GMU Campus hub), drawn in each line's own color. Stops show which lines serve them and offer walking directions. Unnamed stops are named after their road and nearest building.
+- **Bus & shuttle:** stops and route lines from OpenStreetMap (CUE Green/Gold, Metrobus F23/F29/F50, the Mason Shuttles stops at the GMU Campus hub), drawn in each line's own color. Stops show which lines serve them and offer walking directions. Unnamed stops are named after their road and nearest building, or after CUE's own stop name.
+- **Bus times (CUE):** from CUE's published timetable (GTFS), built into the campus layer, so it works offline. A stop lists the next buses on each line and where they're headed ("Green 1 to Vienna Metro · 40 min · 9:36 PM · 10:36 PM"); the map card shows the next one. Tap a line to see the rest of that trip stop by stop with times, step to earlier or later buses, and see the line's hours from that stop (weekdays, Saturday, Sunday, about how often). The line is highlighted on the map. Times follow the feed's time zone (Fairfax), not the phone's. The engine's timetable step is `engine/pipeline/schedule.py`; feeds are listed under `gtfs` in the campus hints (studio: Campuses → Fetch downloads them). Rebuild only the campus layer with `python tools/seed_gmu.py --campus-only`.
 - **Food & coffee:** 25 spots from OpenStreetMap (Panda Express, Manhattan Pizza, Starbucks, Dunkin', Chick-fil-A, the Johnson Center food court…). Each card shows the type, building and hours, and spots search by name or cuisine. Spots inside a building with an indoor map get indoor directions to the counter. Floors that OSM doesn't record go in the studio's campus hints (e.g. `Starbucks@Johnson Center: 0`).
 - **Tap any building for its 3D model.** Buildings with an indoor map (the Johnson Center, Research Hall, Merten Hall, The HUB) open straight into it. Every other building gets a 3D model from its real outline, at true scale. It has a glass floor per level in its category color, floor buttons to isolate a level, and pins for the food spots inside. Parking decks show open levels on pillars, with your car on its level if you saved it there. The card lists food inside, bus stops within 250 m, and "Walk here". Link: `?view=<OSM id>`.
 - **Parking spot saver:** "Save where I parked" records your spot, the deck level and an optional note, stored only on the device (localStorage). Nothing goes to the server. When GPS sees you go from driving to walking inside a campus lot, the app offers to save the spot. "Walk to car" gives turn-by-turn directions back, ending with "Go up to Level 3 of …". The car is drawn as a small glowing orange 3D model at its exact spot and level, lined up with the lot's rows, with no label. On the campus map, the deck holding it turns to glass so the car shows through. In the deck's 3D view, the camera flies straight to the car's level. A "My car" button sits on the map.
@@ -139,9 +151,10 @@ The engine is built so that a school's non-public schematics can be processed wi
   - Campus buildings are 3D. Everything off campus is flat.
   - Color filters for academic, residence halls, parking (highlighted), arena & athletics, and sports fields.
   - Road names appear from zoom 16 (main roads) and 17 (campus streets). Building and lot names fade in as you zoom.
-- **Indoor:** Three.js, using clean vector rooms at true scale with glowing outlines and a flowing route. Search covers rooms and restrooms in every mapped building ("restroom research", "1214"). Each building gets its own 3D view on first visit, and only the one on screen renders. Hover a room to see its name; click it to route there. A step-free toggle keeps routes to elevators.
+- **Indoor:** Three.js, using clean vector rooms at true scale with glowing outlines and a flowing route. Search covers rooms and restrooms in every mapped building ("restroom research", "1214"). Each building gets its own 3D view on first visit, and only the one on screen renders. Hover a room to see its name. Tap a room for its card: it's outlined and its floor shown, with **Directions from here** (the full trip: walk to the best entrance, then inside), **Route from the entrance** (when you're already inside), Save and Share. A step-free toggle keeps routes to elevators.
 - **Deep links** (good for QR codes): `?campus=vt&to=2060` for a room, `&in=gmu-research` to pick the building when several share a number, `?b=<OSM id>` for a building. Links without a campus open GMU, so older GMU links keep working.
 - **Theme:** Memex (charcoal + `#f0a04a`). Tokens are in `app/style.css` and `THEME` in `app/js/indoor3d.js`.
+- **Logo:** a Cinzel "A" whose crossbar is the orange "you are here" diamond, next to the AKADIAN / VERTEX wordmark in Cinzel SemiBold. The mark is in `app/icons/mark.svg` (and `icon.svg` for the browser tab), with PNG app icons beside it. Cinzel is under the SIL Open Font License (`app/vendor/fonts/OFL-Cinzel.txt`).
 
 ## Layout
 
@@ -149,7 +162,7 @@ The engine is built so that a school's non-public schematics can be processed wi
 app/                    public web app (served by the engine)
 engine/                 private engine: server.py, vault.py, store.py, pipeline/, admin_ui/
 engine_data/            engine home (encrypted projects + public published maps)
-tools/fetch_gmu_sources.py  downloads GMU's public floor plans (not stored in git)
+tools/fetch_gmu_sources.py  downloads GMU's public floor plans and CUE's timetable (not stored in git)
 tools/prepare_building.py  renders + OCRs a building's plan PDFs (room labels to check by hand)
 tools/fetch_vt_sources.py  downloads VT's public floor plans (not stored in git)
 tools/vt_buildings.py   Torgersen Hall: redraws the CAD plans in the engine's convention, reads room numbers
@@ -159,6 +172,8 @@ tools/export_static.py  static copy of the public app + published maps (docs/, f
 docs/                   that static copy (generated; re-run the export instead of editing)
 tests/test_engine.py    end-to-end engine test (temp folder)
 tests/test_parking.mjs  parking auto-prompt + on-device storage (node)
+tests/test_schedule.py  GTFS timetable step (no engine dependencies)
+tests/test_buses.mjs    next departures, past midnight, day types (node)
 data/gmu/               public GMU sources: floor plan PDFs, directories, OSM extracts
 ```
 
@@ -177,5 +192,6 @@ data/gmu/               public GMU sources: floor plan PDFs, directories, OSM ex
 - Most campus footpaths are unnamed in OpenStreetMap. Outdoor directions name the road a sidewalk runs along or a crosswalk crosses, and otherwise use nearby buildings as landmarks. A few crosswalks still read "cross the street".
 - The basemap covers the campus plus about 3 km around it; the map can't be panned beyond that.
 - The parking auto-prompt only works while the app is open: a website can't watch GPS in the background. Deck levels are picked by hand, because GPS can't tell levels apart.
+- Bus times are CUE's published timetable, not live positions. Metrobus times need a free WMATA developer key (not set up yet), and Mason Shuttles has no public timetable feed. WMATA renamed its routes in June 2025 (Better Bus), so the F23/F29/F50 labels from OpenStreetMap may be out of date.
 - Bus, shuttle and food data is only as good as OpenStreetMap. Mason Shuttles route lines aren't mapped there, and some hours are wrong (e.g. Panda Express). The studio can't override names, hours or positions yet, only food-spot floors.
 - Building heights are estimated where OpenStreetMap has no floor counts. Adjust them in the campus settings.

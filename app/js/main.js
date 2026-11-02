@@ -1,6 +1,6 @@
 // App flow: pick a room or place -> GPS walks you there on the 3D campus -> 3D indoor route from the entrance.
 // GPS is only used outdoors; indoors the route starts from the entrance, so no indoor positioning is needed.
-import { loadBuilding, planToLatLng, latLngToPlan, metersBetween, roomTitle, floorName } from './building.js';
+import { loadBuilding, latLngToPlan, metersBetween, roomTitle, floorName } from './building.js';
 import { simplify } from './router.js';
 import { IndoorRouting } from './routing.js';
 import { OutdoorMap, nearestOnRing, CATEGORIES } from './outdoor.js';
@@ -8,6 +8,7 @@ import { WalkGraph } from './walk.js';
 import { walkingSteps } from './directions.js';
 import { ParkingSpot, ParkDetector, describe, ago, carHeading, CAR_SVG } from './parking.js';
 import { fmtDist, fmtHeight, walkMins } from './units.js';
+import { Timetable, nowIn, fmtClock, fmtWait, place } from './buses.js';
 
 const $ = (s) => document.querySelector(s);
 const ARRIVE_RADIUS = 20;     // m from the entrance counts as "arrived"
@@ -139,6 +140,7 @@ function show(id, { push = true, url } = {}) {
 }
 history.replaceState({ screen: 'search', depth: 0 }, '', link(location.search));
 window.addEventListener('popstate', (e) => {
+  if (nav.on && !e.state?.nav) stopNav(); // back gesture while navigating: end navigation, stay on the map
   depth = e.state?.depth || 0;
   show(e.state?.screen || 'search', { push: false });
 });
@@ -149,6 +151,8 @@ function back(target) {
 document.querySelectorAll('[data-back]').forEach((el) => (el.onclick = () => back(el.dataset.back)));
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || screen === 'search') return;
+  if (screen === 'indoor' && !$('#roomCard').classList.contains('hidden')) return closeRoomCard();
+  if (screen === 'outdoor' && nav.on) return endNav();
   const btn = $(`#${screen} .sheet > .back, #${screen} .sheet :not(.hidden) > .back`);
   btn?.click();
 });
@@ -160,6 +164,7 @@ function sheetMode(mode) {
   $('#exploreSheet').classList.toggle('hidden', mode !== 'explore');
   $('#parkSheet').classList.toggle('hidden', mode !== 'park');
   carFab.classList.toggle('hidden', mode === 'park');
+  if (mode !== 'nav') outdoor.focusLine(null);
 }
 
 // Step-free is an accessibility need, not a one-off: remember it on this device.
@@ -175,6 +180,8 @@ $('#stepFree').onchange = async () => {
 
 // ---------- search ----------
 const lineNames = (s) => s.lines.map((r) => campus.transit.lines[r]?.name || r).join(' · ');
+const timetable = campus.transit?.schedule ? new Timetable(campus.transit.schedule, campus.transit.stops) : null;
+const lineColour = (ref) => campus.transit.schedule?.routes[ref]?.colour || campus.transit.lines[ref]?.colour || '#2dd4bf';
 const searchable = [
   ...indoors.flatMap((ib) => ib.b.rooms
     .filter((r) => (r.kind === 'room' || r.kind === 'restroom') && !r.restricted)
@@ -337,8 +344,7 @@ function setPlace(p) {
     btn.setAttribute('aria-pressed', on);
   }
 }
-function toggleSaved() {
-  const p = state.place;
+function toggleSaved(p = state.place) {
   if (!p) return;
   let list = savedPlaces();
   if (list.some((s) => sameP(s, p))) {
@@ -351,10 +357,10 @@ function toggleSaved() {
     toast(`Saved: ${p.title}`);
   }
   if (!storeSaved(list)) toast('Couldn’t save on this device (private browsing?)');
-  setPlace(p);
+  setPlace(state.place); // refresh the Save buttons
 }
-$('#saveOut').onclick = toggleSaved;
-$('#saveIn').onclick = toggleSaved;
+$('#saveOut').onclick = () => toggleSaved();
+$('#saveIn').onclick = () => toggleSaved();
 
 function renderSaved() {
   const list = savedPlaces();
@@ -413,8 +419,8 @@ function chooseBuilding(bld) {
 }
 
 // Somewhere you just walk to (a bus stop, a food spot outside mapped buildings, your car).
-function choosePoint({ title, sub, lat, lon, info, url, arrive, beforeArrive, share = true }) {
-  state.dest = { type: 'point', title, lat, lon, info, arrive, beforeArrive, share };
+function choosePoint({ title, sub, lat, lon, info, url, arrive, beforeArrive, share = true, stop = null }) {
+  state.dest = { type: 'point', title, lat, lon, info, arrive, beforeArrive, share, stop };
   state.arrivedOnce = false;
   state.perEntrance = [];
   state.url = url;
@@ -426,8 +432,60 @@ function chooseStop(stop) {
   remember('stop', stop.name, stop.name, lineNames(stop) || 'Bus stop');
   choosePoint({ title: stop.name, sub: lineNames(stop) || stop.networks.join(' · '), lat: stop.lat, lon: stop.lon,
     info: [stop.shuttle && 'Mason Shuttles', lineNames(stop), stop.shelter && 'sheltered'].filter(Boolean).join(' · '),
-    url: `?stop=${campus.transit.stops.indexOf(stop)}` });
+    url: `?stop=${campus.transit.stops.indexOf(stop)}`, stop });
 }
+
+// ---------- bus times at a stop (published timetable, not live) ----------
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const busView = { stop: null, key: null, i: 0 }; // the stop shown, and the line + departure opened in it (if any)
+
+function dayLabel(at) {
+  return at >= 2 * 1440 ? 'In 2 days ' : at >= 1440 ? 'Tomorrow ' : at < 0 ? 'Yesterday ' : '';
+}
+
+function renderBusTimes() {
+  const box = $('#busTimes');
+  const stop = state.mode === 'nav' ? state.dest?.stop : null;
+  const calls = stop && timetable ? timetable.calls(campus.transit.stops.indexOf(stop)) : [];
+  box.classList.toggle('hidden', !calls.length);
+  if (!calls.length) { outdoor.focusLine(null); return; }
+  if (busView.stop !== stop) Object.assign(busView, { stop, key: null, i: 0 });
+  const now = nowIn(timetable.tz);
+  const groups = timetable.departures(campus.transit.stops.indexOf(stop), now);
+  const chip = (ref) => `<span class="line-chip" style="--lc:${lineColour(ref)}">${esc(ref)}</span>`;
+  const g = busView.key && groups.find((x) => x.key === busView.key);
+  outdoor.focusLine(g ? g.ref : null);
+  if (!g) {
+    box.innerHTML = `<h3>Next buses <small>CUE timetable · not live</small></h3>`
+      + (groups.length ? groups.map((x) => {
+        const [first, ...more] = x.deps;
+        return `<button class="bus-row" data-key="${esc(x.key)}">${chip(x.ref)}
+          <span class="bus-to">to ${esc(x.to)}${x.via ? `<small>${esc(x.via)}</small>` : ''}</span>
+          <span class="bus-when"><b>${dayLabel(first.at)}${fmtWait(first.at, now.mins)}</b>
+            <small>${more.slice(0, 2).map((d) => (dayLabel(d.at) !== dayLabel(first.at) ? dayLabel(d.at).toLowerCase() : '') + fmtClock(d.at)).join(' · ')}</small></span></button>`;
+      }).join('') : '<p class="muted">No buses from this stop in the next day.</p>');
+    box.querySelectorAll('[data-key]').forEach((el) => (el.onclick = () => { busView.key = el.dataset.key; busView.i = 0; renderBusTimes(); }));
+    return;
+  }
+  busView.i = Math.min(busView.i, g.deps.length - 1);
+  const dep = g.deps[busView.i];
+  const ride = timetable.ride(dep);
+  const hours = timetable.hours(dep.call);
+  box.innerHTML = `<button class="link bus-back">← All buses here</button>
+    <div class="bus-head">${chip(g.ref)} <b>to ${esc(g.to)}</b>${g.via ? ` <span class="muted">${esc(g.via)}</span>` : ''}</div>
+    <div class="bus-pick">
+      <button class="btn ghost-sm" data-step="-1" ${busView.i ? '' : 'disabled'} aria-label="Earlier bus">‹</button>
+      <span>Leaves here <b>${dayLabel(dep.at).toLowerCase()}${fmtClock(dep.at)}</b> · ${fmtWait(dep.at, now.mins) === fmtClock(dep.at) ? '' : `in ${fmtWait(dep.at, now.mins)} · `}arrives ${esc(place(ride[ride.length - 1].name))} ${fmtClock(ride[ride.length - 1].at)}</span>
+      <button class="btn ghost-sm" data-step="1" ${busView.i < g.deps.length - 1 ? '' : 'disabled'} aria-label="Later bus">›</button>
+    </div>
+    <ol class="bus-stops">${ride.map((r, i) => `<li class="${i === 0 ? 'here' : r.campus ? 'campus' : ''}"><time>${fmtClock(r.at)}</time><span>${esc(r.name)}</span></li>`).join('')}</ol>
+    <h3>From this stop</h3>
+    <ul class="bus-hours">${hours.map((h) => `<li><b>${esc(h.days)}</b> ${fmtClock(h.first)}–${fmtClock(h.last)}${h.every ? ` · about every ${h.every} min` : ''}</li>`).join('')}</ul>
+    <p class="muted small-print">CUE's published timetable, not live bus positions. Times can change with traffic.</p>`;
+  box.querySelector('.bus-back').onclick = () => { busView.key = null; renderBusTimes(); };
+  box.querySelectorAll('[data-step]').forEach((el) => (el.onclick = () => { busView.i += +el.dataset.step; renderBusTimes(); }));
+}
+setInterval(() => { if (screen === 'outdoor' && !$('#busTimes').classList.contains('hidden')) renderBusTimes(); }, 30000);
 
 function chooseFood(f) {
   remember('food', `${f.name}@${f.lat}`, f.name, [f.kind, f.building].filter(Boolean).join(' · '));
@@ -458,7 +516,8 @@ function goOutdoor(bld) {
   sheetMode('nav');
   show('outdoor', { url: state.url });
   $('#shareBtn').classList.toggle('hidden', state.dest?.share === false);
-  outdoor.ready.then(() => { outdoor.select(bld); startGps(); pickTarget(); });
+  renderBusTimes(); // the timetable doesn't need the map; render again once it's up, to highlight the line
+  outdoor.ready.then(() => { outdoor.select(bld); startGps(); pickTarget(); renderBusTimes(); });
 }
 
 function openExplore() {
@@ -507,6 +566,13 @@ const outdoor = new OutdoorMap($('#map'), campus, {
     setUser(ll);
   },
   onStopClick: (stop) => chooseStop(stop),
+  // hover/tap card on a stop: the next bus from the timetable
+  stopNote: (stop) => {
+    if (!timetable) return '';
+    const now = nowIn(timetable.tz);
+    const g = timetable.departures(campus.transit.stops.indexOf(stop), now, 3)[0];
+    return g ? `Next: ${esc(g.ref)} to ${esc(g.to)}, ${fmtWait(g.deps[0].at, now.mins)}` : '';
+  },
   onFoodClick: (f) => chooseFood(f),
 });
 
@@ -519,6 +585,7 @@ function setGps(text, { retry = false } = {}) {
 $('#gpsRetry').onclick = () => { state.demo = false; startGps(); };
 
 let watchId = null;
+let offCampus = false; // GPS works but you're far away: tap the map for a start, and keep watching for when you arrive
 function startGps() {
   if (watchId !== null || state.demo) return;
   if (!('geolocation' in navigator)) return demoMode('Location isn’t available on this device.');
@@ -527,10 +594,17 @@ function startGps() {
     (p) => {
       const ll = [p.coords.latitude, p.coords.longitude];
       const o = main ? [main.b.building.origin.lat, main.b.building.origin.lon] : [campus.buildings[0].ring[0][1], campus.buildings[0].ring[0][0]];
-      if (metersBetween(ll, o) > FAR_FROM_CAMPUS) {
-        return demoMode('You’re not on campus.');
+      const away = metersBetween(ll, o);
+      if (away > FAR_FROM_CAMPUS) {
+        if (!offCampus && state.user) setUser(null); // just left campus: drop the last on-campus fix too
+        offCampus = state.demo = true; // the map doesn't reach that far, so never draw you there (or anywhere)
+        setGps(`You’re ${fmtDist(away)} from campus. Tap the map to choose your start.`);
+        if (state.mode === 'park') updateParkSheet();
+        return;
       }
+      if (offCampus) offCampus = state.demo = false; // you've arrived: real GPS takes over from any tapped start
       setGps(`Using your location (±${fmtDist(p.coords.accuracy)})`);
+      if (p.coords.heading != null && !Number.isNaN(p.coords.heading) && p.coords.speed > 0.7) nav.course = p.coords.heading;
       parkDetector.add({ lat: ll[0], lon: ll[1], speed: p.coords.speed, t: p.timestamp });
       setUser(ll);
     },
@@ -543,17 +617,18 @@ function demoMode(reason) {
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
   watchId = null;
   state.demo = true;
-  setGps(`${reason} Tap the map to choose your start.`, { retry: reason !== 'You’re not on campus.' });
-  if (!state.user && main) setUser(planToLatLng(main.b, 2600, -900)); // a spot a few hundred metres from the main building
+  setGps(`${reason} Tap the map to choose your start.`, { retry: true });
+  if (state.mode === 'park') updateParkSheet();
 }
 
 function setUser(ll) {
-  const moved = !state.user || metersBetween(state.user, ll) > 8;
+  const moved = !state.user || !ll || metersBetween(state.user, ll) > (nav.on ? 3 : 8);
   state.user = ll;
   outdoor.setUser(ll);
-  meBtn.classList.remove('hidden');
+  meBtn.classList.toggle('hidden', !ll);
   if (state.mode === 'park') return updateParkSheet();
   if (moved) pickTarget(); // don't recompute (or refit the map) for GPS jitter
+  else updateNav();
 }
 
 let fitOnce = null; // fit the map to a new route only once, so it doesn't jump while you walk
@@ -588,7 +663,7 @@ function pickTarget(refit = false) {
   $('#arrived').classList.remove('hidden');
   $('#arrived').textContent = `I'm at the ${e.name.split(' (')[0]} →`;
   const toDoor = state.user ? metersBetween(state.user, [e.lat, e.lon]) : Infinity;
-  if (toDoor < ARRIVE_RADIUS && !state.arrivedOnce && !state.demo) {
+  if (toDoor < ARRIVE_RADIUS && !state.arrivedOnce && (!state.demo || nav.on)) {
     state.arrivedOnce = true; // GPS says you're at the door: hand over to the indoor view
     goIndoor();
   }
@@ -622,8 +697,13 @@ function showWalk(out, key, refit, ring, arriveAt, beforeArrive = []) {
   outdoor.focus(null);
   state.walkCoords = out?.coords || null;
   const box = [...(out?.coords || []), ...ring.map(([lon, lat]) => [lat, lon])];
-  if (refit || fitOnce !== key) { fitOnce = key; outdoor.fit(box); }
-  renderWalkSteps(out?.pieces ? walkingSteps(out, { landmarks: campus.buildings, arriveAt, beforeArrive }) : []);
+  if (!nav.on && (refit || fitOnce !== key)) { fitOnce = key; outdoor.fit(box); }
+  const steps = out?.pieces ? walkingSteps(out, { landmarks: campus.buildings, arriveAt, beforeArrive }) : [];
+  Object.assign(state, { steps, walkOut: out, arriveAt: arriveAt.replace(/<[^>]+>/g, '') });
+  renderWalkSteps(steps);
+  $('#startNav').disabled = !out;
+  $('#startNav').title = out ? 'Turn-by-turn directions that follow you' : state.demo ? 'Tap the map to choose your start' : 'Waiting for your location';
+  updateNav();
 }
 
 // Turn-by-turn list under the route summary. Tap a step to fly there. It re-renders as GPS moves you,
@@ -646,6 +726,174 @@ $('#fitRoute').onclick = () => {
   outdoor.fit([...(state.walkCoords || []), ...ring.map(([lon, lat]) => [lat, lon])]);
 };
 $('#arrived').onclick = () => goIndoor();
+$('#startNav').onclick = () => startNav();
+
+// ---------- turn-by-turn navigation: after Start the map follows you, the next turn sits on top, and
+// time left + End sit at the bottom; spoken directions, screen kept awake. The route is recomputed from where
+// you are every few metres, so leaving it reroutes on its own. ----------
+const nav = { on: false, spoken: new Set(), compass: null, compassAt: 0, course: null, wake: null, lastCam: 0 };
+let voiceOn = true;
+try { voiceOn = localStorage.getItem('akadian:voice') !== '0'; } catch {}
+const plain = (html) => html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+const NAV_PAD = () => ({ top: Math.min(240, innerHeight * 0.3), bottom: 30, left: 0, right: 0 }); // you sit low on the screen
+const TURN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V5M5.5 11.5 12 5l6.5 6.5"/></svg>';
+const ARRIVE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="gem" d="M12 3l7 9-7 9-7-9z"/></svg>';
+
+function turnAngle(html) { // which way the banner arrow points
+  const t = plain(html);
+  if (/^Turn around/.test(t)) return 180;
+  const m = t.match(/^(Turn|Bear) (left|right)/);
+  return m ? (m[1] === 'Turn' ? 90 : 45) * (m[2] === 'left' ? -1 : 1) : 0;
+}
+function bearingDeg([lat1, lon1], [lat2, lon2]) {
+  const kx = Math.cos((lat1 * Math.PI) / 180);
+  return ((Math.atan2((lon2 - lon1) * kx, lat2 - lat1) * 180) / Math.PI + 360) % 360;
+}
+function routeBearing() { // the way the route leaves you, ~12 m ahead
+  const c = state.walkCoords;
+  if (!c || c.length < 2) return null;
+  let acc = 0;
+  for (let i = 1; i < c.length; i++) {
+    acc += metersBetween(c[i - 1], c[i]);
+    if (acc >= 12 || i === c.length - 1) return bearingDeg(c[0], c[i]);
+  }
+  return null;
+}
+function facing() { // the compass if the phone has one, else the way you're walking, else the route
+  if (nav.compass != null && Date.now() - nav.compassAt < 3000) return nav.compass;
+  return nav.course ?? routeBearing();
+}
+const lower = (s) => s.replace(/^./, (c) => c.toLowerCase());
+const sayDist = (m) => fmtDist(m).replace(/ ft$/, ' feet').replace(/ mi$/, ' miles').replace(/ km$/, ' kilometres').replace(/ m$/, ' metres');
+function say(text) {
+  if (!voiceOn || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = navigator.language || 'en-US';
+  speechSynthesis.speak(u);
+}
+function renderVoice() {
+  $('#navVoice').setAttribute('aria-pressed', voiceOn);
+  $('#navVoice').classList.toggle('off', !voiceOn);
+  $('#navVoice').title = voiceOn ? 'Spoken directions on' : 'Spoken directions off';
+}
+$('#navVoice').onclick = () => {
+  voiceOn = !voiceOn;
+  try { localStorage.setItem('akadian:voice', voiceOn ? '1' : '0'); } catch {}
+  renderVoice();
+  if (!voiceOn && 'speechSynthesis' in window) speechSynthesis.cancel();
+  toast(voiceOn ? 'Spoken directions on' : 'Spoken directions off');
+};
+
+let compassOn = false;
+function watchCompass() { // must start inside the Start tap: iPhones ask permission for the compass
+  if (compassOn) return;
+  const on = (e) => {
+    const h = e.webkitCompassHeading ?? (e.absolute && e.alpha != null ? (360 - e.alpha) % 360 : null);
+    if (h == null) return;
+    const prev = nav.compass;
+    nav.compass = h; nav.compassAt = Date.now();
+    if (!nav.on) return;
+    outdoor.setHeading(h);
+    const turned = prev == null || Math.abs(((h - prev + 540) % 360) - 180) > 15;
+    if (turned && outdoor.following && state.user && Date.now() - nav.lastCam > 800) {
+      nav.lastCam = Date.now();
+      outdoor.follow(state.user, h, { padding: NAV_PAD() });
+    }
+  };
+  const listen = () => { compassOn = true; addEventListener('deviceorientationabsolute', on); addEventListener('deviceorientation', on); };
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission().then((r) => r === 'granted' && listen()).catch(() => {});
+  } else if ('DeviceOrientationEvent' in window) listen();
+}
+
+async function keepAwake(on) {
+  try {
+    if (on && 'wakeLock' in navigator) nav.wake = await navigator.wakeLock.request('screen');
+    else if (!on) { await nav.wake?.release(); nav.wake = null; }
+  } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (nav.on && document.visibilityState === 'visible') keepAwake(true); });
+
+function startNav() {
+  if (!state.walkOut || !state.user) {
+    return toast(state.demo ? 'Tap the map to choose where you’re starting from.' : 'Waiting for your location…');
+  }
+  watchCompass();
+  nav.on = true;
+  nav.spoken.clear();
+  history.pushState({ screen: 'outdoor', depth: ++depth, nav: true }, '', link(state.url || location.search));
+  $('#outdoor').classList.add('navigating');
+  $('#navBanner').classList.remove('hidden');
+  $('#navBar').classList.remove('hidden');
+  $('#navRecenter').classList.add('hidden');
+  outdoor.popup?.remove();
+  renderVoice();
+  keepAwake(true);
+  outdoor.resize();
+  outdoor.following = true;
+  updateNav({ instant: true });
+}
+function stopNav({ overview = true } = {}) {
+  if (!nav.on) return;
+  nav.on = false;
+  $('#outdoor').classList.remove('navigating');
+  for (const id of ['#navBanner', '#navBar', '#navRecenter']) $(id).classList.add('hidden');
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  keepAwake(false);
+  outdoor.setHeading(null);
+  outdoor.stopFollowing();
+  outdoor.resize();
+  if (overview && screen === 'outdoor' && state.mode === 'nav' && state.dest) pickTarget(true); // back to the route overview
+}
+function endNav() { if (history.state?.nav) history.back(); else stopNav(); } // the popstate handler stops it
+$('#navEnd').onclick = endNav;
+$('#navOverview').onclick = () => { $('#fitRoute').onclick(); $('#navRecenter').classList.remove('hidden'); };
+$('#navRecenter').onclick = () => { $('#navRecenter').classList.add('hidden'); outdoor.following = true; updateNav(); };
+outdoor.onFollowLost = () => { if (nav.on) $('#navRecenter').classList.remove('hidden'); }; // you moved the map yourself
+
+function updateNav({ instant = false } = {}) {
+  if (!nav.on) return;
+  const steps = state.steps || [], out = state.walkOut;
+  const walkM = out?.meters || 0;
+  const insideM = state.dest?.type === 'room' ? state.choice?.meters || 0 : 0;
+  const arrived = !out || walkM < ARRIVE_RADIUS;
+  const mins = walkMins(walkM) + (insideM ? walkMins(insideM) : 0);
+  const eta = new Date(Date.now() + mins * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const where = state.arriveAt || state.dest?.title || 'your destination';
+
+  let banner;
+  if (arrived) {
+    banner = `<div class="nav-turn arrive">${ARRIVE_ICON}</div><div class="nav-text"><b>You’ve arrived</b><span>${esc(where)}</span></div>`;
+    if (!nav.spoken.has('arrived')) { nav.spoken.add('arrived'); say(`You have arrived at ${where}.`); }
+  } else {
+    const [cur, next, then] = steps;
+    const turn = next || cur;
+    const dist = next ? cur.meters : walkM;
+    const arrive = turn?.kind === 'arrive';
+    banner = `<div class="nav-turn${arrive ? ' arrive' : ''}" style="--turn:${turnAngle(turn?.html || '')}deg">${arrive ? ARRIVE_ICON : TURN_ICON}</div>
+      <div class="nav-text"><b>${fmtDist(dist)}</b><span>${turn ? turn.html : esc(where)}</span>
+      ${then ? `<small>Then ${lower(plain(then.html).replace(/\.$/, ''))}</small>` : ''}</div>`;
+    if (!nav.spoken.size) {
+      nav.spoken.add('start');
+      say(`${plain(cur?.html || '')} ${next ? `Then, in ${sayDist(dist)}, ${lower(plain(next.html))}` : ''}`);
+    }
+    if (next) {
+      const key = `${plain(next.html)}|${next.at.map((x) => x.toFixed(4))}`;
+      if (dist <= 25 && !nav.spoken.has(`near:${key}`)) { nav.spoken.add(`near:${key}`); nav.spoken.add(`far:${key}`); say(plain(next.html)); }
+      else if (dist > 40 && !nav.spoken.has(`far:${key}`)) { nav.spoken.add(`far:${key}`); say(`In ${sayDist(dist)}, ${lower(plain(next.html))}`); }
+    }
+  }
+  $('#navBanner').innerHTML = banner;
+  $('#navTrip').innerHTML = arrived
+    ? `<b>Arrived</b><span>${esc(where)}</span>`
+    : `<b>${mins} min</b><span>${fmtDist(walkM + insideM)} · arrive ${eta}</span>`;
+  $('#navEnd').setAttribute('aria-label', arrived ? 'Done' : 'End navigation');
+
+  const h = facing();
+  outdoor.setHeading(h);
+  if (outdoor.following && state.user) { nav.lastCam = Date.now(); outdoor.follow(state.user, h, { padding: NAV_PAD(), instant }); }
+}
 
 // Share a place (great for "meet me here"); falls back to copying the link.
 $('#shareBtn').onclick = async () => {
@@ -801,7 +1049,11 @@ function openParkSheet() {
 }
 
 function updateParkSheet(first = false) {
-  if (!state.user) { $('#parkWhere').textContent = 'Finding your location…'; $('#parkSave').disabled = true; return; }
+  if (!state.user) {
+    $('#parkWhere').textContent = state.demo ? 'Tap the map where you parked.' : 'Finding your location…';
+    $('#parkSave').disabled = true;
+    return;
+  }
   const [lat, lon] = state.user;
   const lot = parking.lotAt(lat, lon);
   $('#parkWhere').textContent = (lot ? `You're in ${lot.name}.` : 'Not inside a campus lot; the spot will be saved where you are.')
@@ -852,14 +1104,61 @@ async function ensureIndoor() {
   if (!ib.view) {
     $('#steps').innerHTML = '<li class="muted"><span class="spinner" aria-hidden="true"></span> Loading the 3D map…</li>';
     const { IndoorView } = await loadIndoorView();
-    ib.view ||= new IndoorView($('#scene'), ib.b, { onSelect: rerouteIndoor });
+    ib.view ||= new IndoorView($('#scene'), ib.b, { onSelect: openRoomCard });
   }
   for (const x of indoors) x.view?.setActive(x === ib); // one building on screen; the others stop rendering
   indoor = ib.view;
   indoor.resize();
+  closeRoomCard();
 }
 
+// ---------- a room tapped in the 3D view: its card, with directions from where you are ----------
+let cardRoom = null;
+const roomPlace = (room, ib) => ({ kind: 'room', key: roomKey(room, ib), title: roomTitle(room), sub: roomSub(room, ib) });
+function renderRoomSave() {
+  const on = !!cardRoom && savedPlaces().some((s) => sameP(s, roomPlace(cardRoom, state.ib)));
+  $('#roomSave').textContent = on ? '★ Saved' : '☆ Save place';
+  $('#roomSave').classList.toggle('on', on);
+  $('#roomSave').setAttribute('aria-pressed', on);
+}
+function openRoomCard(room) {
+  const ib = state.ib;
+  cardRoom = room;
+  $('#roomTitle').innerHTML = `${esc(roomTitle(room))}<small>${esc(roomSub(room, ib))}</small>`;
+  const e = (state.choice?.e && ib.b.entrances.includes(state.choice.e) && state.choice.e) || ib.b.entrances[0];
+  $('#roomInside').textContent = `Route from the ${e.name.split(' (')[0]}`;
+  $('#roomGo').textContent = state.user ? 'Directions from here' : 'Directions';
+  renderRoomSave();
+  $('#indoor .sheet').classList.add('card-open');
+  $('#roomCard').classList.remove('hidden');
+  indoor.setFloorMode(room.floor);
+  [...$('#floorbar').children].forEach((x) => x.classList.toggle('on', x.title === floorName(ib.b, room.floor)));
+  indoor.select(room);
+  $('#roomGo').focus({ preventScroll: true });
+}
+function closeRoomCard() {
+  if (!cardRoom) return;
+  cardRoom = null;
+  $('#roomCard').classList.add('hidden');
+  $('#indoor .sheet').classList.remove('card-open');
+  indoor?.select(null);
+}
+$('#roomClose').onclick = closeRoomCard;
+$('#roomGo').onclick = () => { const r = cardRoom; closeRoomCard(); chooseRoom(r); }; // the full trip: walk to the best entrance, then inside
+$('#roomInside').onclick = () => { const r = cardRoom; closeRoomCard(); rerouteIndoor(r); };
+$('#roomSave').onclick = () => { toggleSaved(roomPlace(cardRoom, state.ib)); renderRoomSave(); };
+$('#roomShare').onclick = async () => {
+  const url = new URL(roomUrl(cardRoom, state.ib), location.href).href;
+  try {
+    if (navigator.share) await navigator.share({ title: roomTitle(cardRoom), text: `${roomTitle(cardRoom)} · ${roomSub(cardRoom, state.ib)}`, url });
+    else { await navigator.clipboard.writeText(url); toast('Link copied'); }
+  } catch (err) {
+    if (err.name !== 'AbortError') toast('Couldn’t share this room.');
+  }
+};
+
 async function goIndoor() {
+  if (nav.on) { history.replaceState({ ...history.state, nav: false }, ''); stopNav({ overview: false }); } // walked in: on to the indoor route
   if (state.dest?.type === 'building') {
     await ensureIndoor();
     indoor.clearRoute();
