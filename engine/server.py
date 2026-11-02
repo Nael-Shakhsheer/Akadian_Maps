@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
 from .vault import Vault
-from .store import Store, check_slug
+from .store import Store, check_slug, campus_index
 from .pipeline import ingest, build as builder, campus as campus_pipe, basemap
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -443,6 +443,17 @@ def public_app(home: Path) -> FastAPI:
     @app.get("/api/public/campus/{cid}.json")
     def campus_json(cid: str):
         return serve_json("campus", cid)
+
+    index_cache = {"key": None, "data": None}
+
+    @app.get("/api/public/campuses.json")
+    def campuses_json():
+        # rebuilt only when a campus is (re)published
+        files = sorted((published / "campus").glob("*.json"))
+        key = tuple((f.name, f.stat().st_mtime_ns) for f in files)
+        if index_cache["key"] != key:
+            index_cache.update(key=key, data=campus_index(published))
+        return JSONResponse(index_cache["data"], headers={"Cache-Control": "public, max-age=60"})
 
     @app.get("/api/public/buildings/{bid}.json")
     def building_json(bid: str):

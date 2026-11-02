@@ -4,11 +4,12 @@ engine_data/
 
 # ---- Third-party files we don't redistribute ----
 # GMU's floor-plan PDFs and directory images (download with: python tools/fetch_gmu_sources.py)
-data/gmu/*/source/floor-plans-pdf/
-data/gmu/*/source/directories/
+data/*/*/source/floor-plans-pdf/
+data/*/*/source/floor-maps/
+data/*/*/source/directories/
 # Renders made from those PDFs
-data/gmu/*/plans/
-data/gmu/*/plan-images/
+data/*/*/plans/
+data/*/*/plan-images/
 
 # ---- Local / generated ----
 tmp/

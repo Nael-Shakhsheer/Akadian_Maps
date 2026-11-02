@@ -41,6 +41,36 @@ button { font: inherit; color: inherit; }
 
 .panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 
+/* campus picker (first screen) */
+body.picking .topbar, body.picking .panel { display: none !important; }
+.pick { flex: 1; overflow-y: auto; display: flex; justify-content: center;
+  background: radial-gradient(120% 60% at 50% 0%, #f0a04a1f, transparent 60%), var(--bg); }
+.pick-inner { width: 100%; max-width: 520px; padding: max(40px, env(safe-area-inset-top)) 16px 32px; }
+.pick-brand { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 8px 0 34px; }
+.logo.xl { width: 64px; height: 64px; border-radius: 18px; font-size: 36px; box-shadow: 0 0 0 6px #f0a04a1f, 0 10px 40px #f0a04a40; }
+.wordmark { font-size: 34px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+.wordmark small { display: block; font-size: 13px; font-weight: 600; letter-spacing: .32em; text-transform: uppercase; color: var(--accent-hi); margin-top: 6px; }
+.pick h1 { font-size: 24px; margin: 0 0 4px; text-align: center; }
+.pick-sub { color: var(--muted); text-align: center; margin: 0 0 22px; font-size: 15px; }
+.pick-list { display: grid; gap: 12px; }
+.campus-card {
+  position: relative; display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer;
+  padding: 16px 16px 16px 20px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); overflow: hidden;
+  transition: border-color .15s, transform .15s;
+}
+.campus-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 6px; background: var(--c); }
+.campus-card:hover, .campus-card:focus-visible { border-color: var(--accent); transform: translateY(-1px); }
+.campus-card .seal { width: 46px; height: 46px; border-radius: 12px; flex: none; display: grid; place-items: center;
+  font-weight: 800; font-size: 17px; color: #fff; background: var(--c); }
+.campus-card .txt { flex: 1; min-width: 0; }
+.campus-card b { display: block; font-size: 18px; }
+.campus-card small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.campus-card .indoor { color: var(--accent-hi); }
+.campus-card .last { position: absolute; top: 8px; right: 10px; font-size: 11px; font-weight: 600; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+.campus-card .arrow { color: var(--accent); font-size: 20px; flex: none; }
+.link.small { font-size: 13px; margin-left: 6px; }
+
 /* search */
 #search { padding: 28px 16px; overflow-y: auto; max-width: 720px; width: 100%; margin: 0 auto; }
 .eyebrow { color: var(--muted); font-size: 14px; margin: 0 0 6px; }

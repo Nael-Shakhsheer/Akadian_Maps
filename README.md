@@ -1,6 +1,9 @@
 # Akadian Maps
 
-3D campus maps with room-level directions. Prototype: George Mason University, with the 3D campus outdoors and four buildings indoors: the Johnson Center (4 floors, ~320 rooms), Research Hall (floors 1–4, ~235 rooms), Merten Hall (floor 1) and The HUB (lower level).
+3D campus maps with room-level directions. Two campuses so far, picked on the app's first screen:
+
+- **George Mason University** (Fairfax): the 3D campus, plus four buildings indoors: the Johnson Center (4 floors, ~320 rooms), Research Hall (floors 1–4, ~235 rooms), Merten Hall (floor 1) and The HUB (lower level).
+- **Virginia Tech** (Blacksburg): the 3D campus with Blacksburg Transit stops and food, plus Torgersen Hall indoors (floors 1–3, ~220 rooms).
 
 There are two parts:
 
@@ -17,16 +20,28 @@ You need Python 3.11+. Node is only needed to run `tests/test_parking.mjs`.
 pip install -r engine/requirements.txt
 ```
 
-**2. Get GMU's public floor plans.** These belong to GMU, so they aren't stored in the repo. This downloads them from GMU's Student Centers site:
+**2. Get the public floor plans.** These belong to the universities, so they aren't stored in the repo. These download them from GMU's Student Centers site and VT Computer Science's space-planning page:
 
 ```bash
 python tools/fetch_gmu_sources.py
 ```
 
-**3. Build and publish the GMU demo maps.** This builds the four indoor maps, the campus layer and the self-hosted basemap tiles into `engine_data/published/`:
+```bash
+python tools/fetch_vt_sources.py
+```
+
+**3. Build and publish the demo maps.** These build the indoor maps, the campus layers and the self-hosted basemap tiles into `engine_data/published/`. Torgersen Hall's plans are prepared first:
 
 ```bash
 python tools/seed_gmu.py --publish-only
+```
+
+```bash
+python tools/vt_buildings.py prepare
+```
+
+```bash
+python tools/seed_vt.py --publish-only
 ```
 
 **4. Start the engine:**
@@ -89,6 +104,7 @@ The engine is built so that a school's non-public schematics can be processed wi
 ## The app
 
 - **Getting around the app:**
+  - A plain launch opens on **Choose your campus** (GMU or Virginia Tech, under the Akadian logo). Shared links and QR codes skip it and open their campus directly, and "Change campus" on the home screen goes back to it. Every link carries its campus (`?campus=vt&to=2060`).
   - One search box covers rooms, buildings, food and bus stops. Exact room numbers rank first, and Enter opens the top result.
   - Category buttons cover Food, Bus, Restrooms, Study rooms, Computer labs and Buildings.
   - "Explore the map" opens the map without a destination.
@@ -124,7 +140,7 @@ The engine is built so that a school's non-public schematics can be processed wi
   - Color filters for academic, residence halls, parking (highlighted), arena & athletics, and sports fields.
   - Road names appear from zoom 16 (main roads) and 17 (campus streets). Building and lot names fade in as you zoom.
 - **Indoor:** Three.js, using clean vector rooms at true scale with glowing outlines and a flowing route. Search covers rooms and restrooms in every mapped building ("restroom research", "1214"). Each building gets its own 3D view on first visit, and only the one on screen renders. Hover a room to see its name; click it to route there. A step-free toggle keeps routes to elevators.
-- **Deep links** (good for QR codes): `?to=344` for a room in the main building (the Johnson Center), `?to=405&in=gmu-research` for a room in another building, `?b=<OSM id>` for a building, `?campus=<id>`.
+- **Deep links** (good for QR codes): `?campus=vt&to=2060` for a room, `&in=gmu-research` to pick the building when several share a number, `?b=<OSM id>` for a building. Links without a campus open GMU, so older GMU links keep working.
 - **Theme:** Memex (charcoal + `#f0a04a`). Tokens are in `app/style.css` and `THEME` in `app/js/indoor3d.js`.
 
 ## Layout
@@ -135,6 +151,9 @@ engine/                 private engine: server.py, vault.py, store.py, pipeline/
 engine_data/            engine home (encrypted projects + public published maps)
 tools/fetch_gmu_sources.py  downloads GMU's public floor plans (not stored in git)
 tools/prepare_building.py  renders + OCRs a building's plan PDFs (room labels to check by hand)
+tools/fetch_vt_sources.py  downloads VT's public floor plans (not stored in git)
+tools/vt_buildings.py   Torgersen Hall: redraws the CAD plans in the engine's convention, reads room numbers
+tools/seed_vt.py        loads the Virginia Tech demo (campus from OSM + Torgersen Hall)
 tools/seed_gmu.py       loads the GMU demo from public sources
 tools/export_static.py  static copy of the public app + published maps (docs/, for GitHub Pages)
 docs/                   that static copy (generated; re-run the export instead of editing)
@@ -153,6 +172,8 @@ data/gmu/               public GMU sources: floor plan PDFs, directories, OSM ex
 - Research Hall, Merten Hall and The HUB show room numbers only (no public directory of names). They are placed on the map by fitting their outline to OpenStreetMap, since OSM tags only one of their entrances.
 - A food spot whose floor isn't known gets indoor directions only when its building is fully mapped (the JC). In Merten Hall and The HUB you get walking directions to the building.
 - The JC floor plans are from 2020. Room names come from the 2023 directories.
+- Torgersen Hall (VT) comes from VT Computer Science's space-planning drawings. They're labelled *proposed* and show room numbers but no names or restrooms. Stairs and elevators were placed where the drawings show them on every floor. The floor 3 door to the bridge is left out, since its OpenStreetMap position doesn't line up with the plan, and the floor 3 lecture hall (2150) isn't routable because its seating rows seal it off in the drawing.
+- Newman Library publishes floor maps, but its site blocks automated downloads, so it isn't included. Save the images by hand and import them in the studio.
 - Most campus footpaths are unnamed in OpenStreetMap. Outdoor directions name the road a sidewalk runs along or a crosswalk crosses, and otherwise use nearby buildings as landmarks. A few crosswalks still read "cross the street".
 - The basemap covers the campus plus about 3 km around it; the map can't be panned beyond that.
 - The parking auto-prompt only works while the app is open: a website can't watch GPS in the background. Deck levels are picked by hand, because GPS can't tell levels apart.

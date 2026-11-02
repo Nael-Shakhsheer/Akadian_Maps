@@ -14,9 +14,52 @@ const ARRIVE_RADIUS = 20;     // m from the entrance counts as "arrived"
 const FAR_FROM_CAMPUS = 3000; // m; beyond this we assume a demo and let you tap the map
 const DATA = window.AKADIAN_DATA || '/api/public'; // published maps, served read-only by the engine
 const params = new URLSearchParams(location.search);
-const CAMPUS = params.get('campus') || 'gmu';
+// A plain launch (not a shared link or QR code) starts by asking which campus.
+if (!location.search.replace('?', '')) await pickCampus();
+const CAMPUS = params.get('campus') || 'gmu'; // links without a campus are GMU's (the first demo)
+try { localStorage.setItem('akadian:last-campus', CAMPUS); } catch {}
+// Every address the app shows carries the campus, so reloading or sharing stays on the same campus.
+function link(u) {
+  const q = new URLSearchParams(String(u || '').replace(/^[^?]*\??/, ''));
+  q.delete('campus');
+  const rest = q.toString();
+  return `?campus=${encodeURIComponent(CAMPUS)}${rest ? `&${rest}` : ''}`;
+}
 const BROWSE = [['🍴', 'Food & coffee', 'food'], ['🚌', 'Bus & shuttle', 'bus'], ['🚻', 'Restrooms', 'restroom'],
   ['📚', 'Study rooms', 'study'], ['💻', 'Computer labs', 'computer lab'], ['🏛', 'Buildings', 'building']];
+
+// ---------- choosing a campus ----------
+async function pickCampus() {
+  document.body.classList.add('picking');
+  $('#boot').classList.add('hidden');
+  $('#pick').classList.remove('hidden');
+  let list = [];
+  try {
+    list = await fetch(`${DATA}/campuses.json`).then((r) => (r.ok ? r.json() : []));
+  } catch {}
+  if (!list.length) { // can't list campuses (offline, older server): carry on with the default one
+    document.body.classList.remove('picking');
+    $('#pick').classList.add('hidden');
+    $('#boot').classList.remove('hidden');
+    return;
+  }
+  let last = null;
+  try { last = localStorage.getItem('akadian:last-campus'); } catch {}
+  const initials = (s) => s.split(/\s+/).filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).join('').slice(0, 3);
+  $('#pickList').innerHTML = list.map((c) => `
+    <button class="campus-card" role="listitem" data-id="${c.id}" style="--c:${c.accent}">
+      <span class="seal" aria-hidden="true">${initials(c.short)}</span>
+      <span class="txt"><b>${c.short}</b><small>${c.place}</small>
+        <small class="indoor">${c.indoor.length ? `Indoor 3D: ${c.indoor.join(', ')}` : 'Campus map'}</small></span>
+      ${c.id === last ? '<span class="last">Last used</span>' : ''}
+      <span class="arrow" aria-hidden="true">→</span>
+    </button>`).join('');
+  $('#pickList').querySelectorAll('[data-id]').forEach((el) => (el.onclick = () => {
+    $('#pick').classList.add('hidden');
+    location.search = `?campus=${encodeURIComponent(el.dataset.id)}`;
+  }));
+  await new Promise(() => {}); // the page reloads on the chosen campus
+}
 
 // ---------- loading ----------
 function bootError(msg) {
@@ -32,7 +75,12 @@ try {
     if (!r.ok) throw new Error('The map server isn’t responding. Check your connection and try again.');
     return r.json();
   });
-  const shells = campus.buildings.filter((x) => x.indoor);
+  // one per indoor map (a building drawn in several pieces, like Torgersen Hall, shares one): keep the biggest piece
+  const byMap = new Map();
+  for (const x of campus.buildings.filter((y) => y.indoor)) {
+    if (!byMap.has(x.indoor) || x.ring.length > byMap.get(x.indoor).ring.length) byMap.set(x.indoor, x);
+  }
+  const shells = [...byMap.values()];
   // the routing worker keeps the grid; a building that fails to load just isn't offered indoors
   const loaded = await Promise.allSettled(shells.map((x) => loadBuilding(`${DATA}/${x.indoor}`, { grid: false })));
   indoors = shells.map((bld, i) => loaded[i].value && { bld, b: loaded[i].value, name: loaded[i].value.building.name || bld.name })
@@ -81,15 +129,15 @@ function toast(msg) {
 let screen = 'search';
 let depth = 0;
 function show(id, { push = true, url } = {}) {
-  const target = url ?? state.url ?? location.search;
-  if (push && id !== screen) { history.pushState({ screen: id, depth: ++depth }, '', target || location.pathname); }
-  else if (push && url !== undefined) history.replaceState({ screen: id, depth }, '', target || location.pathname);
+  const target = link(url ?? state.url ?? location.search);
+  if (push && id !== screen) { history.pushState({ screen: id, depth: ++depth }, '', target); }
+  else if (push && url !== undefined) history.replaceState({ screen: id, depth }, '', target);
   screen = id;
   for (const s of ['search', 'outdoor', 'indoor', 'building']) $('#' + s).classList.toggle('hidden', s !== id);
   if (id === 'outdoor') setTimeout(() => outdoor.resize(), 0);
   if (id === 'search') { renderHome(); }
 }
-history.replaceState({ screen: 'search', depth: 0 }, '', location.search || location.pathname);
+history.replaceState({ screen: 'search', depth: 0 }, '', link(location.search));
 window.addEventListener('popstate', (e) => {
   depth = e.state?.depth || 0;
   show(e.state?.screen || 'search', { push: false });
@@ -240,6 +288,7 @@ function searchFor(q) {
 }
 document.querySelectorAll('#exploreSheet [data-q]').forEach((el) => (el.onclick = () => searchFor(el.dataset.q)));
 $('#openExplore').onclick = () => openExplore();
+$('#switchCampus').onclick = () => { location.href = location.pathname; }; // back to the campus picker
 
 // ---------- recent places (this device only) ----------
 const RECENT_KEY = `akadian:recent:${CAMPUS}`;
@@ -397,7 +446,7 @@ function chooseFood(f) {
     state.url = url;
     chooseRoom(room, { record: false });
     state.url = url;
-    history.replaceState(history.state, '', url);
+    history.replaceState(history.state, '', link(url));
     setHeader(`${f.name}<small>${[f.kind, `${floorName(b, floor.id)} · ${ib.name}`].filter(Boolean).join(' · ')}</small>`);
     return;
   }
@@ -837,7 +886,7 @@ async function rerouteIndoor(room) {
   state.dest = { type: 'room', room, title: roomTitle(room) };
   state.choice = { e, legs };
   state.url = roomUrl(room, ib);
-  history.replaceState(history.state, '', state.url);
+  history.replaceState(history.state, '', link(state.url));
   remember('room', roomKey(room, ib), state.dest.title, roomSub(room, ib));
   setHeader(`${state.dest.title}<small>${roomSub(room, ib)}</small>`);
   indoor.showRoute(legs, { ...room, title: state.dest.title }, e.name.split(' (')[0]);

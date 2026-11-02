@@ -84,3 +84,17 @@ class Store:
 
     def published_path(self, kind: str, id_: str) -> Path:
         return self.home / "published" / kind / f"{check_slug(id_)}.json"
+
+
+def campus_index(published: Path) -> list:
+    """The campus picker's list: every published campus with its card (name, place, accent colour)."""
+    out = []
+    for p in sorted((published / "campus").glob("*.json")):
+        if not SLUG.match(p.stem):
+            continue
+        c = json.loads(p.read_text(encoding="utf-8"))
+        card = c.get("card", {})
+        out.append({"id": p.stem, "name": c.get("name", p.stem), "short": card.get("short") or c.get("name", p.stem).split(" – ")[0],
+                    "place": card.get("place", ""), "accent": card.get("accent", "#f0a04a"),
+                    "indoor": sorted({b["name"] for b in c.get("buildings", []) if b.get("indoor") and b.get("name")})})
+    return out

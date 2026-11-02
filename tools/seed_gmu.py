@@ -230,6 +230,7 @@ def main():
     indoor = {str(p["osm_way"]): f"buildings/{p['id']}.json" for p, _, _ in projects}
     camp = campus_pipe.compile_campus("George Mason University – Fairfax", raw, HINTS, indoor)
     stats = camp.pop("stats")
+    camp["card"] = {"short": "George Mason", "place": "Fairfax, VA", "accent": "#006633"}  # campus picker
     store.publish("campus", "gmu", camp)
     if not a.publish_only:
         store.save("campuses", "gmu", {"id": "gmu", "name": camp["name"], "boundary_way": raw["boundary"]["id"],

@@ -58,6 +58,10 @@ def main():
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw)
             n[kind] += 1
+    # the campus picker's list (the engine builds it on request)
+    sys.path.insert(0, str(ROOT))
+    from engine.store import campus_index
+    (data / "campuses.json").write_text(json.dumps(campus_index(pub), separators=(",", ":")), encoding="utf-8")
     size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file()) / 1e6
     print(f"Exported to {out}: {n['campus']} campus, {n['buildings']} buildings, {n['tiles']} tiles, "
           f"{n['fonts']} font files ({size:.1f} MB)")

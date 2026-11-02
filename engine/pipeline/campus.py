@@ -2,7 +2,7 @@
 
 The only network access in the engine: fetching public OSM data from Overpass when you ask it to.
 """
-import json, math, re, urllib.parse, urllib.request
+import json, math, re, time, urllib.error, urllib.parse, urllib.request
 from collections import Counter
 
 from .walk import compile_walk
@@ -14,22 +14,34 @@ LEVEL_M = 3.8
 SERVICE_WORDS = ("Facilities", "Plant", "Warehouse", "Police", "Archives", "Shops", "Parking Services")
 
 
-def overpass(query: str) -> list:
+def overpass(query: str, tries: int = 5) -> list:
     req = urllib.request.Request(OVERPASS, data=urllib.parse.urlencode({"data": query}).encode(),
                                  headers={"User-Agent": "AkadianMapEngine/0.1"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.loads(r.read().decode("utf-8"))["elements"]
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return json.loads(r.read().decode("utf-8"))["elements"]
+        except urllib.error.HTTPError as e:  # the public server is often busy: back off and retry
+            if e.code not in (429, 502, 503, 504) or attempt == tries - 1:
+                raise
+            time.sleep(15 * (attempt + 1))
 
 
-def fetch(boundary_way: int) -> dict:
-    """Download the campus boundary, buildings, parking and sports areas inside it."""
-    area = f"way({boundary_way});map_to_area->.c;"
-    boundary = overpass(f"[out:json][timeout:60];way({boundary_way});out geom;")
+def fetch(boundary_way: int, kind: str = "way") -> dict:
+    """Download the campus boundary, buildings, parking and sports areas inside it.
+    kind: "way" for a campus drawn as one outline (GMU), "relation" for a multipolygon (Virginia Tech)."""
+    if kind not in ("way", "relation"):
+        raise ValueError("kind must be 'way' or 'relation'")
+    q = "way" if kind == "way" else "rel"
+    area = f"{q}({boundary_way});map_to_area->.c;"
+    boundary = overpass(f"[out:json][timeout:60];{q}({boundary_way});out geom;")
+    if boundary and kind == "relation":
+        boundary = [relation_outline(boundary[0])]
     buildings = overpass(f"[out:json][timeout:90];{area}(way[\"building\"](area.c);relation[\"building\"](area.c););out geom;")
     areas = overpass(f"[out:json][timeout:90];{area}(way[\"amenity\"=\"parking\"](area.c);relation[\"amenity\"=\"parking\"](area.c);"
                      f"way[\"leisure\"~\"^(pitch|stadium|track|sports_centre)$\"](area.c);relation[\"leisure\"~\"^(pitch|stadium|track|sports_centre)$\"](area.c););out geom;")
     if not boundary:
-        raise ValueError(f"OSM way {boundary_way} not found.")
+        raise ValueError(f"OSM {kind} {boundary_way} not found.")
     s, w, n, e = bbox(boundary[0], margin_m=400)
     walk = overpass(f"[out:json][timeout:120];way[\"highway\"~\"^({'|'.join(WALK_HIGHWAYS)})$\"]({s},{w},{n},{e});out geom;")
     bb = f"({s},{w},{n},{e})"
@@ -45,10 +57,49 @@ WALK_HIGHWAYS = ["footway", "path", "pedestrian", "steps", "living_street", "res
                  "tertiary", "secondary", "primary", "cycleway", "track", "corridor"]
 
 
+def stitch(ways):
+    """Join a relation's member ways (lists of {lat, lon}) into closed rings."""
+    key = lambda p: (round(p["lat"], 7), round(p["lon"], 7))
+    left, rings_out = [list(w) for w in ways if len(w) > 1], []
+    while left:
+        ring = left.pop(0)
+        while key(ring[0]) != key(ring[-1]):
+            for i, w in enumerate(left):
+                if key(w[0]) == key(ring[-1]):
+                    ring += w[1:]
+                elif key(w[-1]) == key(ring[-1]):
+                    ring += w[::-1][1:]
+                else:
+                    continue
+                left.pop(i)
+                break
+            else:
+                break  # open ring (incomplete data): keep what we have
+        if len(ring) >= 4:
+            rings_out.append(ring)
+    return rings_out
+
+
+def _area(ring):
+    return abs(sum(a["lon"] * b["lat"] - b["lon"] * a["lat"] for a, b in zip(ring, ring[1:]))) / 2
+
+
+def relation_outline(rel):
+    """A multipolygon campus as one boundary element: its largest outer ring is the outline that's drawn,
+    and every outer ring counts for the area the maps cover."""
+    outers = stitch([m["geometry"] for m in rel.get("members", []) if m.get("role") == "outer" and "geometry" in m])
+    if not outers:
+        raise ValueError(f"OSM relation {rel['id']} has no outer outline.")
+    outers.sort(key=_area, reverse=True)
+    return {"type": "relation", "id": rel["id"], "tags": rel.get("tags", {}), "geometry": outers[0],
+            "extent": [p for r in outers for p in r]}
+
+
 def bbox(boundary_el, margin_m=0):
     """(south, west, north, east) of the boundary, grown by margin_m metres."""
-    lats = [p["lat"] for p in boundary_el["geometry"]]
-    lons = [p["lon"] for p in boundary_el["geometry"]]
+    pts = boundary_el.get("extent") or boundary_el["geometry"]
+    lats = [p["lat"] for p in pts]
+    lons = [p["lon"] for p in pts]
     dlat = margin_m / 110540
     dlon = margin_m / (111320 * math.cos(math.radians(sum(lats) / len(lats))))
     return min(lats) - dlat, min(lons) - dlon, max(lats) + dlat, max(lons) + dlon

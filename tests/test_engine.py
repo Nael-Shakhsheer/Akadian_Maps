@@ -130,8 +130,39 @@ def test_footprint_fit():
     assert abs(math.hypot(M[0, 0], M[1, 0]) - s) < 0.002
 
 
+def test_multipolygon_campus():
+    """A campus drawn as several OSM ways (Virginia Tech) is stitched into one outline."""
+    from engine.pipeline.campus import relation_outline, bbox
+    P = lambda lat, lon: {"lat": lat, "lon": lon}
+    big = [[P(0, 0), P(0, 1)], [P(1, 1), P(0, 1)], [P(1, 1), P(1, 0), P(0, 0)]]  # out of order, one reversed
+    small = [[P(5, 5), P(5, 5.1), P(5.1, 5.1), P(5, 5)]]
+    rel = {"id": 1, "members": [{"role": "outer", "geometry": g} for g in big + small]}
+    o = relation_outline(rel)
+    assert len(o["geometry"]) == 5 and o["geometry"][0] == o["geometry"][-1]  # the big ring, closed
+    s_, w, n, e = bbox(o)
+    assert (s_, w, n, e) == (0, 0, 5.1, 5.1)  # the area covers every piece
+
+
+def test_campus_index():
+    """The campus picker lists every published campus with its card."""
+    import tempfile
+    from engine.store import campus_index
+    with tempfile.TemporaryDirectory() as d:
+        pub = Path(d)
+        (pub / "campus").mkdir()
+        (pub / "campus/vt.json").write_text(json.dumps({"name": "Virginia Tech – Blacksburg", "card": {
+            "short": "Virginia Tech", "place": "Blacksburg, VA", "accent": "#861f41"},
+            "buildings": [{"name": "Torgersen Hall", "indoor": "buildings/vt-torgersen.json"}, {"name": "Owens Hall"}]}))
+        (pub / "campus/../evil.json").write_text("{}")  # outside campus/: never listed
+        idx = campus_index(pub)
+    assert idx == [{"id": "vt", "name": "Virginia Tech – Blacksburg", "short": "Virginia Tech", "place": "Blacksburg, VA",
+                    "accent": "#861f41", "indoor": ["Torgersen Hall"]}], idx
+
+
 if __name__ == "__main__":
     test_engine_end_to_end()
     test_four_digit_rooms()
     test_footprint_fit()
-    print("engine end-to-end, labels, footprint fit: OK")
+    test_multipolygon_campus()
+    test_campus_index()
+    print("engine end-to-end, labels, footprint fit, multipolygon campus, campus index: OK")

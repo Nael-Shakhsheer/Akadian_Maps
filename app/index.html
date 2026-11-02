@@ -30,6 +30,19 @@
     </label>
   </header>
 
+  <!-- First screen on a plain launch: choose a campus -->
+  <section id="pick" class="pick hidden" aria-labelledby="pickTitle">
+    <div class="pick-inner">
+      <div class="pick-brand">
+        <span class="logo xl" aria-hidden="true">A</span>
+        <div class="wordmark">Akadian<small>Maps</small></div>
+      </div>
+      <h1 id="pickTitle">Choose your campus</h1>
+      <p class="pick-sub">3D campus maps with directions to any room.</p>
+      <div id="pickList" class="pick-list" role="list"></div>
+    </div>
+  </section>
+
   <!-- loading / error screen -->
   <div id="boot" class="boot" role="status" aria-live="polite">
     <span class="logo big" aria-hidden="true">A</span>
@@ -39,7 +52,7 @@
 
   <!-- Home: choose a destination -->
   <section id="search" class="panel">
-    <p class="eyebrow" id="homeEyebrow">Campus map</p>
+    <p class="eyebrow"><span id="homeEyebrow">Campus map</span> <button id="switchCampus" class="link small">Change campus</button></p>
     <h1>Where are you headed?</h1>
     <div class="searchbox">
       <input id="q" type="search" placeholder="Search rooms, buildings, food, bus stops" autocomplete="off" aria-label="Search the campus" enterkeyhint="go">

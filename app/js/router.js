@@ -5,6 +5,9 @@
 const ROOM_COST = 4;          // walking through rooms instead of corridors is discouraged
 const STAIR_COST = 45;        // per floor, in cell units (~10 m of walking)
 const ELEVATOR_COST = 70;     // waiting + riding
+const MIN_AREA = 300;         // cells (~12 m²): smaller sealed pockets (between stair treads, inside wall
+                              // drawings) are never used as a start, goal or stair landing
+const NEAR_M = 15;            // a room the plan seals off (no drawn door) is routed to its nearest reachable spot
 // 8 neighbours: straight moves first (k < 4), then diagonals
 const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
 const DL = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
@@ -17,6 +20,7 @@ export class Router {
     this.n = this.per * b.floors.length;
     this.cells = new Uint8Array(this.n);
     b.floors.forEach((f, i) => this.cells.set(f.cells, i * this.per));
+    this.labelAreas();
     this.g = new Float64Array(this.n);
     this.from = new Int32Array(this.n);
     this.seen = new Uint32Array(this.n); // generation stamps so we don't clear arrays per search
@@ -38,7 +42,32 @@ export class Router {
     }
   }
 
-  // Nearest open cell to a plan point on a floor.
+  // Connected open areas per floor (same 8-neighbour moves as the search), so snapping can skip tiny pockets.
+  labelAreas() {
+    const { w, h, per } = this;
+    this.area = new Int32Array(this.n).fill(-1);
+    this.areaSize = [];
+    const stack = new Int32Array(this.n);
+    for (let s = 0; s < this.n; s++) {
+      if (!this.cells[s] || this.area[s] >= 0) continue;
+      const id = this.areaSize.length, base = s - (s % per);
+      let top = 0, size = 0;
+      stack[top++] = s; this.area[s] = id;
+      while (top) {
+        const c = stack[--top], r = c - base, x = r % w, y = (r / w) | 0;
+        size++;
+        for (let k = 0; k < 8; k++) {
+          const X = x + DX[k], Y = y + DY[k];
+          if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+          const j = base + Y * w + X;
+          if (this.cells[j] && this.area[j] < 0) { this.area[j] = id; stack[top++] = j; }
+        }
+      }
+      this.areaSize.push(size);
+    }
+  }
+
+  // Nearest open cell to a plan point on a floor (in an area big enough to walk around in).
   snap(fid, [x, y]) {
     const fi = this.b.floorIndex[fid];
     const cx = Math.round((x - this.b.grid.x0) / this.b.grid.cell - 0.5);
@@ -50,7 +79,7 @@ export class Router {
         const X = cx + dx, Y = cy + dy;
         if (X < 0 || Y < 0 || X >= this.w || Y >= this.h) continue;
         const i = fi * this.per + Y * this.w + X;
-        if (this.cells[i] && dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; best = i; }
+        if (this.cells[i] && this.areaSize[this.area[i]] >= MIN_AREA && dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; best = i; }
       }
       if (best >= 0) return best;
     }
@@ -63,7 +92,39 @@ export class Router {
     return { floor: this.b.floors[f].id, x: x0 + ((r % this.w) + 0.5) * cell, y: y0 + (Math.floor(r / this.w) + 0.5) * cell };
   }
 
-  route(start, goal, { stepFree = false } = {}) {
+  // Other open areas on the goal's floor within NEAR_M, nearest first (one cell each): where to send you if
+  // the room itself can't be reached (its door isn't drawn, or a drawn railing seals it).
+  nearbyGoals(goal) {
+    const { w, h, per } = this;
+    const fi = Math.floor(goal / per), r = goal % per, gx = r % w, gy = (r / w) | 0;
+    const maxR = Math.ceil(NEAR_M / (this.b.mPerPx * this.b.grid.cell));
+    const found = new Map();
+    for (let rad = 1; rad <= maxR; rad++) {
+      for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
+        const X = gx + dx, Y = gy + dy;
+        if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+        const i = fi * per + Y * w + X, a = this.area[i];
+        if (!this.cells[i] || a === this.area[goal] || this.areaSize[a] < MIN_AREA) continue;
+        const d = dx * dx + dy * dy;
+        if (!found.has(a) || d < found.get(a)[1]) found.set(a, [i, d]);
+      }
+      if (found.size >= 3) break;
+    }
+    return [...found.values()].sort((a, c) => a[1] - c[1]).map(([i]) => i);
+  }
+
+  route(start, goal, opts = {}) {
+    const legs = this.routeTo(start, goal, opts);
+    if (legs) return legs;
+    for (const near of this.nearbyGoals(goal)) {
+      const l = this.routeTo(start, near, opts);
+      if (l) return l;
+    }
+    return null;
+  }
+
+  routeTo(start, goal, { stepFree = false } = {}) {
     const { w, per } = this;
     const gx = goal % per % w, gy = Math.floor(goal % per / w), gf = Math.floor(goal / per);
     const heur = (i) => {
@@ -83,7 +144,17 @@ export class Router {
    * start is reached. (Path costs are symmetric apart from the first/last cell, which doesn't matter here.)
    * Returns an array of legs (or null) per start.
    */
-  routeMany(starts, goal, { stepFree = false } = {}) {
+  routeMany(starts, goal, opts = {}) {
+    const all = this.routeManyTo(starts, goal, opts);
+    if (all.some(Boolean)) return all;
+    for (const near of this.nearbyGoals(goal)) {
+      const res = this.routeManyTo(starts, near, opts);
+      if (res.some(Boolean)) return res;
+    }
+    return all;
+  }
+
+  routeManyTo(starts, goal, { stepFree = false } = {}) {
     const want = new Set(starts);
     const gen = this.search(goal, () => 0, (cur) => want.delete(cur) && want.size === 0, stepFree);
     return starts.map((s) => {
