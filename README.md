@@ -108,13 +108,15 @@ The engine is built so that a school's non-public schematics can be processed wi
 ## The app
 
 - **Getting around the app:**
-  - A plain launch opens on **Choose your campus** (GMU or Virginia Tech, under the Akadian Vertex logo). Shared links and QR codes skip it and open their campus directly, and "Change campus" on the home screen goes back to it. Every link carries its campus (`?campus=vt&to=2060`).
-  - One search box covers rooms, buildings, food and bus stops. Exact room numbers rank first, and Enter opens the top result.
-  - Category buttons cover Food, Bus, Restrooms, Study rooms, Computer labs and Buildings.
-  - "Explore the map" opens the map without a destination.
-  - **Saved places:** up to 5 favourites (a classroom, the bus stop home, lunch). Tap ☆ Save place on any destination, then one tap on the home screen gets directions. Remove one with ✕. Stored only on the device.
+  - A plain launch opens on **Choose your campus** (GMU or Virginia Tech, under the Akadian Vertex logo). Shared links and QR codes skip it and open their campus directly. The campus badge at the end of the search bar, or "Change campus" in the home card, goes back to it. Every link carries its campus (`?campus=vt&to=2060`).
+  - **The map is home**, laid out like Google and Apple Maps:
+    - A floating search bar sits on top, with category chips under it: Food, Bus, Restrooms, Study rooms, Computer labs and Buildings.
+    - Tapping the bar opens the search list over the map (full screen on phones, a panel on wide screens). It shows your saved places and recent places, and results appear as you type.
+    - One search covers rooms, buildings, food and bus stops. Exact room numbers rank first, and Enter opens the top result.
+  - **Picking a place** puts its name in the search bar (✕ closes it) and opens its card at the bottom: name, trip time, Start. On phones, drag the card (or tap its grip) between peek, half and full, and a flick jumps to the next stop. On wide screens it's a panel on the left. The map frames the route in whatever part of the map isn't covered.
+  - **Saved places:** up to 5 favourites (a classroom, the bus stop home, lunch). Tap ☆ Save place on any destination. They're one tap away in the home card and at the top of the search list. Remove one with ✕. Stored only on the device.
   - The last 5 places are kept on the device as Recent.
-  - The phone's back gesture, the browser's back button and Esc all step back a screen.
+  - The phone's back gesture, the browser's back button and Esc all step back: from a place to the search results you picked it from, from the search list to the map.
   - A loading screen shows while the map loads, and a clear error with "Try again" appears if it can't.
 - **Map screen:**
   - Routes show the total trip time first. Distances are in feet and miles for US users, metres elsewhere.

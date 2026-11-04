@@ -52,27 +52,33 @@
     <button id="bootRetry" class="btn primary hidden">Try again</button>
   </div>
 
-  <!-- Home: choose a destination -->
-  <section id="search" class="panel">
-    <p class="eyebrow"><span id="homeEyebrow">Campus map</span> <button id="switchCampus" class="link small">Change campus</button></p>
-    <h1>Where are you headed?</h1>
-    <div class="searchbox">
+  <!-- Search: opens over the map when you tap the search bar -->
+  <section id="search" class="search-overlay hidden" aria-label="Search the campus">
+    <div class="search-head">
+      <button id="searchBack" class="icon-btn" aria-label="Back to the map"><span aria-hidden="true">←</span></button>
       <input id="q" type="search" placeholder="Search rooms, buildings, food, bus stops" autocomplete="off" aria-label="Search the campus" enterkeyhint="go">
+      <button id="searchClear" class="icon-btn hidden" aria-label="Clear the search"><span aria-hidden="true">✕</span></button>
     </div>
-    <div class="home-actions">
-      <button class="tile-btn" id="openExplore"><span class="ti">🗺</span><span>Explore the map<small>Tap any building for its 3D model</small></span></button>
+    <div class="search-body">
+      <div id="browse" class="chips scroll-row" aria-label="Browse by category"></div>
+      <div id="savedQuick"></div>
+      <div id="recent"></div>
+      <h2 class="list-title" id="listTitle"></h2>
+      <ul id="results" class="results"></ul>
     </div>
-    <div id="carCard" class="car-card"></div>
-    <div id="browse" class="chips" aria-label="Browse by category"></div>
-    <div id="saved"></div>
-    <div id="recent"></div>
-    <h2 class="list-title" id="listTitle"></h2>
-    <ul id="results" class="results"></ul>
   </section>
 
   <!-- Outdoor: GPS to the best entrance -->
   <section id="outdoor" class="panel hidden">
     <div id="map">
+      <div id="mapTop" class="map-top">
+        <div class="searchbar">
+          <button id="searchOpen" class="searchbar-field" aria-label="Search the campus"><span id="searchText" class="searchbar-text">Search rooms, buildings, food</span></button>
+          <button id="searchClose" class="icon-btn hidden" aria-label="Close this place"><span aria-hidden="true">✕</span></button>
+          <button id="campusBtn" class="campus-chip" aria-label="Change campus" title="Change campus"></button>
+        </div>
+        <div id="mapChips" class="chips scroll-row map-chips" aria-label="Browse by category"></div>
+      </div>
       <!-- turn-by-turn navigation (after Start): next turn on top, trip and End at the bottom -->
       <div id="navBanner" class="nav-banner hidden" role="status" aria-live="polite"></div>
       <button id="navRecenter" class="nav-recenter hidden">Re-center</button>
@@ -85,13 +91,14 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="mute" d="M17 9l5 6M22 9l-5 6"/></svg></button>
       </div>
     </div>
-    <div class="sheet">
+    <div class="sheet map-sheet" id="mapSheet">
+      <div class="sheet-grip" aria-hidden="true"><span></span></div>
       <div id="navSheet">
-        <button class="back" data-back="search">← Change destination</button>
+        <button class="sheet-close" data-back="search" aria-label="Close"><span aria-hidden="true">✕</span></button>
         <div class="dest" id="destOut"></div>
-        <div class="gps"><span id="gpsStatus" class="muted"></span><button id="gpsRetry" class="link hidden">Use my location</button></div>
+        <div class="gps"><span id="gpsStatus" class="muted"></span><button id="gpsRetry" class="link hidden">Use my location</button><span id="navTools" class="sheet-tools"></span></div>
         <div class="leg" id="outLeg"></div>
-        <div class="actions">
+        <div class="actions" data-peek>
           <button id="startNav" class="btn primary start-btn" disabled>Start</button>
           <button id="fitRoute" class="btn secondary">Show whole route</button>
           <button id="arrived" class="btn secondary">I'm at the entrance →</button>
@@ -100,25 +107,22 @@
         <section id="busTimes" class="bus-times hidden" aria-label="Bus times"></section>
         <ol id="walkSteps" class="steps walk" aria-label="Walking directions"></ol>
       </div>
-      <!-- browsing the map with no destination -->
+      <!-- home: the map with nothing picked yet -->
       <div id="exploreSheet" class="hidden">
-        <button class="back" data-back="search">← Back</button>
-        <div class="dest" id="exploreTitle">Campus map<small>Tap any building for its 3D model. Use Layers to show or hide categories.</small></div>
-        <div class="gps"><span id="gpsStatus2" class="muted"></span></div>
-        <div class="explore-grid">
-          <button data-q="food">🍴 Food & coffee</button>
-          <button data-q="bus">🚌 Bus stops</button>
-          <button data-q="restroom">🚻 Restrooms</button>
-          <button data-q="study">📚 Study rooms</button>
+        <div class="home-head" data-peek>
+          <div><b id="homeCampus">Campus map</b><small id="gpsStatus2" class="muted">Tap any building for its 3D model</small></div>
+          <button id="switchCampus" class="link small">Change campus</button>
         </div>
+        <div id="carCard" class="car-card"></div>
+        <div id="saved"></div>
       </div>
       <!-- save where you parked (stored only on this device) -->
       <div id="parkSheet" class="hidden">
-        <button class="back" data-back="search">← Back</button>
+        <button class="sheet-close" data-back="search" aria-label="Close"><span aria-hidden="true">✕</span></button>
         <div class="dest">Save your parking spot<small id="parkWhere">Finding your location…</small></div>
         <div id="parkLevels" class="level-row hidden" role="group" aria-label="Deck level"></div>
         <label class="park-note">Note (optional)<input id="parkNote" maxlength="60" placeholder="e.g. Row C, near the stairs"></label>
-        <div class="actions"><button id="parkSave" class="btn primary" disabled>Save spot</button></div>
+        <div class="actions" data-peek><button id="parkSave" class="btn primary" disabled>Save spot</button></div>
         <p class="muted small-print">Saved only on this device. Nothing is sent anywhere.</p>
       </div>
     </div>

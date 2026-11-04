@@ -432,21 +432,36 @@ export class OutdoorMap {
     this.map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 0 });
   }
 
+  // The parts of the map covered by the search bar and the card (px per side): routes and places are framed in the rest.
+  setInset(inset) { this.inset = inset; }
+  pad(extra = 0) {
+    const i = this.inset || { top: 0, bottom: 0, left: 0, right: 0 };
+    const c = this.map.getContainer();
+    // never pad more than the map has room for (fitBounds refuses)
+    const v = Math.max(0, Math.min(i.top + i.bottom + 2 * extra, c.clientHeight - 80) - 2 * extra);
+    const k = i.top + i.bottom ? v / (i.top + i.bottom) : 0;
+    const h = Math.max(0, Math.min(i.left + i.right + 2 * extra, c.clientWidth - 80) - 2 * extra);
+    const kh = i.left + i.right ? h / (i.left + i.right) : 0;
+    return { top: extra + i.top * k, bottom: extra + i.bottom * k, left: extra + i.left * kh, right: extra + i.right * kh };
+  }
+
   center([lat, lon]) {
-    this.map.easeTo({ center: [lon, lat], zoom: Math.max(this.map.getZoom(), 17.3), duration: 700 });
+    this.map.easeTo({ center: [lon, lat], zoom: Math.max(this.map.getZoom(), 17.3), padding: this.pad(), duration: 700 });
   }
 
   // fly to one step of the walking directions (null clears the marker)
   focus(ll) {
     this.map.getSource('focus')?.setData(ll ? { type: 'Feature', geometry: { type: 'Point', coordinates: [ll[1], ll[0]] } } : empty());
-    if (ll) this.map.easeTo({ center: [ll[1], ll[0]], zoom: 18.2, duration: 900 });
+    if (ll) this.map.easeTo({ center: [ll[1], ll[0]], zoom: 18.2, padding: this.pad(), duration: 900 });
   }
 
   fit(lls) {
     const b = new maplibregl.LngLatBounds();
     for (const [lat, lon] of lls) b.extend([lon, lat]);
     this.following = false;
-    this.map.fitBounds(b, { padding: 70, maxZoom: 17.5, pitch: 58, bearing: -28, duration: REDUCED() ? 0 : 1200 });
+    const c = this.map.getContainer();
+    const extra = Math.min(60, c.clientWidth / 8, c.clientHeight / 8);
+    this.map.fitBounds(b, { padding: this.pad(extra), maxZoom: 17.5, pitch: 58, bearing: -28, duration: REDUCED() ? 0 : 1200 });
   }
 
   resize() { this.map.resize(); }

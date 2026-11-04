@@ -98,8 +98,12 @@ const routingFor = (ib) => (ib.routing ||= new IndoorRouting(`${DATA}/${ib.bld.i
 const roomSub = (room, ib) => `${room.kind === 'room' ? `Room ${room.id} · ` : ''}${floorName(ib.b, room.floor)} · ${ib.name}`;
 const CAMPUS_SHORT = campus.name.split(' – ')[0];
 $('#campusName').textContent = CAMPUS_SHORT;
-$('#homeEyebrow').textContent = campus.name;
-$('#exploreTitle').firstChild.textContent = CAMPUS_SHORT;
+$('#homeCampus').textContent = campus.card?.short || CAMPUS_SHORT;
+// the round campus badge at the end of the search bar (tap it to change campus), and the logo at its start
+const card = campus.card || {};
+$('#campusBtn').textContent = (card.short || CAMPUS_SHORT).split(/\s+/).filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).join('').slice(0, 3);
+$('#campusBtn').style.setProperty('--c', card.accent || 'var(--accent)');
+$('#searchOpen').prepend($('.topbar .mark').cloneNode(true));
 
 const walk = campus.walk ? new WalkGraph(campus.walk) : null;
 let indoor = null; // the IndoorView on screen (one per building, made on first visit)
@@ -127,35 +131,104 @@ function toast(msg) {
 }
 
 // ---------- screens + browser history (so the phone's back gesture works) ----------
+// Screens: 'search' is home (the map with the search bar), 'outdoor' a place or route on the map, then the 3D views.
+// The search list opens over the map only when you tap the search bar, with its own history entry, so the back
+// gesture closes it like in the big map apps.
 let screen = 'search';
 let depth = 0;
-function show(id, { push = true, url } = {}) {
+let searching = false;
+function show(id, { push = true, url, search = false } = {}) {
   const target = link(url ?? state.url ?? location.search);
-  if (push && id !== screen) { history.pushState({ screen: id, depth: ++depth }, '', target); }
-  else if (push && url !== undefined) history.replaceState({ screen: id, depth }, '', target);
+  if (push && id !== screen) { history.pushState({ screen: id, depth: ++depth, mode: state.mode }, '', target); }
+  else if (push && url !== undefined) history.replaceState({ screen: id, depth, mode: state.mode }, '', target);
   screen = id;
-  for (const s of ['search', 'outdoor', 'indoor', 'building']) $('#' + s).classList.toggle('hidden', s !== id);
-  if (id === 'outdoor') setTimeout(() => outdoor.resize(), 0);
-  if (id === 'search') { renderHome(); }
+  const base = id === 'search' ? 'outdoor' : id;
+  for (const s of ['outdoor', 'indoor', 'building']) $('#' + s).classList.toggle('hidden', s !== base);
+  document.body.classList.toggle('map-mode', base === 'outdoor');
+  placeStepFree(id === 'outdoor');
+  setSearching(search);
+  if (id === 'search') enterHome();
+  if (base === 'outdoor') setTimeout(() => { outdoor.resize(); layoutSheet(); }, 0);
 }
 history.replaceState({ screen: 'search', depth: 0 }, '', link(location.search));
 window.addEventListener('popstate', (e) => {
   if (nav.on && !e.state?.nav) stopNav(); // back gesture while navigating: end navigation, stay on the map
   depth = e.state?.depth || 0;
-  show(e.state?.screen || 'search', { push: false });
+  show(e.state?.screen || 'search', { push: false, search: !!e.state?.searching });
+  if (screen === 'outdoor' && e.state?.mode && e.state.mode !== state.mode) restoreOutdoor(e.state.mode); // forward again
 });
 function back(target) {
   if (depth > 0) history.back();
   else show(target, { url: target === 'search' ? location.pathname : undefined });
 }
-document.querySelectorAll('[data-back]').forEach((el) => (el.onclick = () => back(el.dataset.back)));
+// Closing a place (its X) goes straight back to the map, however you got there.
+function goHome() { if (depth > 0) history.go(-depth); else show('search', { url: location.pathname }); }
+document.querySelectorAll('[data-back]').forEach((el) => (el.onclick = () => (el.dataset.back === 'search' ? goHome() : back(el.dataset.back))));
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || screen === 'search') return;
+  if (e.key !== 'Escape') return;
+  if (searching) return closeSearch();
+  if (screen === 'search') return;
   if (screen === 'indoor' && !$('#roomCard').classList.contains('hidden')) return closeRoomCard();
   if (screen === 'outdoor' && nav.on) return endNav();
-  const btn = $(`#${screen} .sheet > .back, #${screen} .sheet :not(.hidden) > .back`);
+  const btn = $(`#${screen} .sheet > .back, #${screen} .sheet > :not(.hidden) > .sheet-close`);
   btn?.click();
 });
+
+// ---------- search bar + search list ----------
+function setSearching(on) {
+  searching = on;
+  $('#search').classList.toggle('hidden', !on);
+  document.body.classList.toggle('searching', on);
+  if (on) renderHome();
+}
+function openSearch(q = '') {
+  if (!searching) history.pushState({ screen, depth: ++depth, mode: state.mode, searching: true }, '', location.href);
+  setSearching(true);
+  $('#q').value = q;
+  $('#searchClear').classList.toggle('hidden', !q);
+  renderResults(q);
+  $('#q').focus(); // in the same tap, so phones open the keyboard
+}
+function closeSearch() { if (history.state?.searching) history.back(); else setSearching(false); }
+$('#searchOpen').onclick = () => openSearch();
+$('#searchBack').onclick = closeSearch;
+$('#searchClose').onclick = goHome;
+$('#searchClear').onclick = () => { $('#q').value = ''; $('#searchClear').classList.add('hidden'); renderResults(''); $('#q').focus(); };
+$('#campusBtn').onclick = () => { location.href = location.pathname; }; // back to the campus picker
+
+// The bar shows what you picked (tap it to search again, X to close), or the search prompt on the home map.
+function updateBar(title) {
+  $('#searchText').textContent = title || 'Search rooms, buildings, food';
+  $('#mapTop').classList.toggle('has-place', !!title);
+  $('#searchClose').classList.toggle('hidden', !title);
+  $('#campusBtn').classList.toggle('hidden', !!title);
+}
+
+// Home: the map with nothing picked; the sheet shows your saved places and car.
+let homeFitted = false;
+function enterHome() {
+  sheetMode('explore');
+  setPlace(null);
+  outdoor.setRoute(null); outdoor.setPoints([]); outdoor.focus(null); outdoor.select(null);
+  updateBar(null);
+  renderHome();
+  setSnap('peek', false);
+  if (!homeFitted) { homeFitted = true; fitCore(); }
+  outdoor.ready.then(() => startGps());
+}
+// Browser forward to a place you had closed: put its card and route back.
+function restoreOutdoor(mode) {
+  sheetMode(mode);
+  if (mode === 'nav' && state.dest) {
+    updateBar(state.dest.title);
+    outdoor.ready.then(() => { outdoor.select(state.dest.bld || state.ib?.bld || null); pickTarget(true); renderBusTimes(); });
+  } else if (mode === 'park') { updateBar(null); updateParkSheet(true); }
+  setSnap('peek');
+}
+
+// Step-free lives in the route card on the map (there's no top bar there) and in the top bar elsewhere.
+const stepFreeToggle = $('.topbar .toggle');
+function placeStepFree(inSheet) { (inSheet ? $('#navTools') : $('.topbar')).append(stepFreeToggle); }
 
 // The outdoor screen navigates somewhere, browses the map, or saves where you parked.
 function sheetMode(mode) {
@@ -163,6 +236,7 @@ function sheetMode(mode) {
   $('#navSheet').classList.toggle('hidden', mode !== 'nav');
   $('#exploreSheet').classList.toggle('hidden', mode !== 'explore');
   $('#parkSheet').classList.toggle('hidden', mode !== 'park');
+  $('#outdoor').dataset.mode = mode;
   carFab.classList.toggle('hidden', mode === 'park');
   if (mode !== 'nav') outdoor.focusLine(null);
 }
@@ -243,8 +317,9 @@ function renderResults(q) {
   let fuzzy = false;
   if (q && !list.length && q.length >= 4) { list = searchable.filter((s) => typoScore(s, words) >= 0); fuzzy = true; } // "did you mean"
   $('#listTitle').textContent = q ? (list.length ? `${fuzzy ? 'Closest matches for' : 'Results for'} “${q}”` : '') : '';
-  $('#saved').classList.toggle('hidden', !!q);
   $('#recent').classList.toggle('hidden', !!q);
+  $('#savedQuick').classList.toggle('hidden', !!q);
+  $('#browse').classList.toggle('hidden', !!q);
   $('#results').innerHTML = '';
   topResult = null;
   for (const s of list.slice(0, 40)) {
@@ -278,7 +353,7 @@ function renderResults(q) {
     $('#results').innerHTML = `<li class="empty">Nothing matches “${q}”. Try a room number like <b>344</b>, a building, or a category below.</li>`;
   }
 }
-$('#q').addEventListener('input', (e) => renderResults(e.target.value));
+$('#q').addEventListener('input', (e) => { $('#searchClear').classList.toggle('hidden', !e.target.value); renderResults(e.target.value); });
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter' && topResult) { e.preventDefault(); topResult(); } });
 
 for (const [icon, label, q] of BROWSE) {
@@ -288,13 +363,14 @@ for (const [icon, label, q] of BROWSE) {
   c.onclick = () => { $('#q').value = q; renderResults(q); $('#q').focus(); };
   $('#browse').append(c);
 }
-function searchFor(q) {
-  $('#q').value = q;
-  show('search', { url: location.pathname });
-  renderResults(q);
+// the same categories as chips under the search bar on the map (Food, Bus, Restrooms…), like the big map apps
+for (const [icon, label, q] of BROWSE) {
+  const c = document.createElement('button');
+  c.className = 'chip browse';
+  c.innerHTML = `<span aria-hidden="true">${icon}</span> ${label}`;
+  c.onclick = () => openSearch(q);
+  $('#mapChips').append(c);
 }
-document.querySelectorAll('#exploreSheet [data-q]').forEach((el) => (el.onclick = () => searchFor(el.dataset.q)));
-$('#openExplore').onclick = () => openExplore();
 $('#switchCampus').onclick = () => { location.href = location.pathname; }; // back to the campus picker
 
 // ---------- recent places (this device only) ----------
@@ -387,6 +463,13 @@ function renderHome() {
   $('#recent').innerHTML = list.length ? `<h2 class="list-title">Recent</h2><div class="recent-row">${list.map((r, i) =>
     `<button class="recent" data-i="${i}"><span>${r.title}</span><small>${r.sub || ''}</small></button>`).join('')}</div>` : '';
   $('#recent').querySelectorAll('[data-i]').forEach((el) => (el.onclick = () => openRecent(list[el.dataset.i])));
+  // in the search list: your saved places one tap away, or a hint on a first visit
+  const fav = savedPlaces();
+  $('#savedQuick').innerHTML = fav.length
+    ? `<h2 class="list-title">Saved</h2><div class="recent-row">${fav.map((p, i) =>
+      `<button class="recent" data-i="${i}"><span>${KIND_ICON[p.kind] || '📍'} ${p.title}</span><small>${p.sub || ''}</small></button>`).join('')}</div>`
+    : list.length ? '' : `<p class="search-hint">Search a room number (<b>${(main?.b.rooms.find((r) => r.kind === 'room' && r.name) || main?.b.rooms.find((r) => r.kind === 'room'))?.id || '101'}</b>), a building, food or a bus stop. Pick a category above to browse.</p>`;
+  $('#savedQuick').querySelectorAll('[data-i]').forEach((el) => (el.onclick = () => openRecent(fav[el.dataset.i])));
   renderResults($('#q').value);
 }
 
@@ -515,23 +598,24 @@ function chooseFood(f) {
 function goOutdoor(bld) {
   sheetMode('nav');
   show('outdoor', { url: state.url });
+  updateBar(state.dest?.title);
+  setSnap('peek', false);
   $('#shareBtn').classList.toggle('hidden', state.dest?.share === false);
   renderBusTimes(); // the timetable doesn't need the map; render again once it's up, to highlight the line
   outdoor.ready.then(() => { outdoor.select(bld); startGps(); pickTarget(); renderBusTimes(); });
 }
 
 function openExplore() {
-  state.dest = null;
-  setPlace(null);
-  state.url = '?explore=1';
-  outdoor.setRoute(null); outdoor.setPoints([]); outdoor.focus(null); outdoor.select(null);
-  sheetMode('explore');
-  show('outdoor', { url: state.url });
-  // start on the central campus (everything within ~350 m of the main building), not the whole boundary
+  show('search', { url: location.pathname });
+  fitCore();
+}
+// the central campus (everything within ~350 m of the main building), not the whole boundary
+function fitCore() {
   const mid = (main?.bld || campus.buildings[0]).ring[0];
   const core = campus.buildings.filter((x) => metersBetween([x.ring[0][1], x.ring[0][0]], [mid[1], mid[0]]) < 350)
     .flatMap((x) => x.ring.map(([lon, lat]) => [lat, lon]));
-  outdoor.ready.then(() => { startGps(); outdoor.fit(core); });
+  // after the map has been sized (it starts hidden behind the loading screen)
+  outdoor.ready.then(() => setTimeout(() => { outdoor.resize(); outdoor.fit(core); }, 30));
 }
 
 // Indoor route from every entrance to the destination room (so we can pick the best overall).
@@ -831,6 +915,7 @@ function startNav() {
   renderVoice();
   keepAwake(true);
   outdoor.resize();
+  layoutSheet();
   outdoor.following = true;
   updateNav({ instant: true });
 }
@@ -844,6 +929,7 @@ function stopNav({ overview = true } = {}) {
   outdoor.setHeading(null);
   outdoor.stopFollowing();
   outdoor.resize();
+  layoutSheet();
   if (overview && screen === 'outdoor' && state.mode === 'nav' && state.dest) pickTarget(true); // back to the route overview
 }
 function endNav() { if (history.state?.nav) history.back(); else stopNav(); } // the popstate handler stops it
@@ -988,6 +1074,97 @@ async function showBuilding(bld) {
   } else all.classList.add('on');
 }
 
+// ---------- bottom sheet ----------
+// Phones: the card over the map drags between peek (name, trip time, Start), half and full, like Google and Apple
+// Maps; a flick goes to the next stop. Wide screens: a side panel under the search bar. The map keeps the route clear
+// of whatever covers it (search bar, sheet, side panel).
+const sheet = $('#mapSheet');
+const WIDE = matchMedia('(min-width: 900px)');
+let snap = 'peek';
+const activeSheet = () => ['#navSheet', '#exploreSheet', '#parkSheet'].map((s) => $(s)).find((el) => !el.classList.contains('hidden'));
+function relTop(el) { let y = 0; for (let e = el; e && e !== sheet; e = e.offsetParent) y += e.offsetTop; return y; }
+function peekHeight() {
+  const a = activeSheet()?.querySelector('[data-peek]');
+  return Math.min(a ? relTop(a) + a.offsetHeight + 16 : 170, sheet.offsetHeight);
+}
+function snapHeight(s) {
+  const H = $('#outdoor').clientHeight;
+  return s === 'full' ? sheet.offsetHeight : s === 'half' ? Math.min(sheet.offsetHeight, Math.max(peekHeight() + 40, Math.round(H * 0.52))) : peekHeight();
+}
+function placeSheet(visible, animate) {
+  sheet.style.transition = animate ? '' : 'none';
+  sheet.style.transform = WIDE.matches ? '' : `translateY(${Math.max(0, sheet.offsetHeight - visible)}px)`;
+  setInsets(WIDE.matches ? 0 : visible);
+}
+function setSnap(s, animate = true) {
+  snap = s;
+  sheet.classList.toggle('full', s === 'full');
+  if (s !== 'full') sheet.scrollTop = 0;
+  placeSheet(snapHeight(s), animate);
+}
+function layoutSheet() { if (!$('#outdoor').classList.contains('hidden')) setSnap(snap, false); }
+function setInsets(visible) {
+  const o = $('#outdoor');
+  const bare = o.classList.contains('navigating');
+  const top = bare || o.dataset.mode === 'park' ? 0 : $('#mapTop').offsetTop + $('#mapTop').offsetHeight;
+  const bottom = bare ? 0 : visible;
+  const left = WIDE.matches && !bare ? sheet.offsetLeft + sheet.offsetWidth : 0;
+  o.style.setProperty('--top-inset', `${WIDE.matches ? 0 : top}px`);
+  o.style.setProperty('--sheet-vis', `${bottom}px`);
+  o.style.setProperty('--left-inset', `${left}px`);
+  outdoor.setInset({ top: WIDE.matches ? 0 : top, bottom, left, right: 0 });
+}
+// content grows (a route arrives, bus times load): keep the peek showing the summary
+new ResizeObserver(() => { if (snap !== 'full') layoutSheet(); }).observe(sheet);
+for (const s of ['#navSheet', '#exploreSheet', '#parkSheet']) new ResizeObserver(() => { if (snap === 'peek') layoutSheet(); }).observe($(s));
+WIDE.addEventListener('change', layoutSheet);
+window.addEventListener('resize', layoutSheet);
+
+let drag = null;
+sheet.addEventListener('pointerdown', (e) => {
+  if (WIDE.matches || e.button > 0 || e.target.closest('input, textarea, select')) return;
+  if (snap === 'full' && sheet.scrollTop > 0) return; // scrolling the list, not the sheet
+  drag = { id: e.pointerId, y0: e.clientY, vis0: snapHeight(snap), vis: snapHeight(snap), t: performance.now(), v: 0, moved: false };
+});
+sheet.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dy = e.clientY - drag.y0;
+  if (!drag.moved) {
+    if (Math.abs(dy) < 8) return;
+    if (snap === 'full' && dy < 0) { drag = null; return; } // flicking up inside the full sheet scrolls it
+    drag.moved = true;
+    try { sheet.setPointerCapture(e.pointerId); } catch {} // keep the drag if the finger leaves the sheet
+  }
+  const now = performance.now();
+  const vis = Math.max(96, Math.min(sheet.offsetHeight, drag.vis0 - dy));
+  drag.v = (vis - drag.vis) / Math.max(1, now - drag.t); // px/ms, + = growing
+  drag.vis = vis; drag.t = now;
+  sheet.style.transition = 'none';
+  sheet.style.transform = `translateY(${sheet.offsetHeight - vis}px)`;
+});
+function endDrag(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const d = drag;
+  drag = null;
+  if (!d.moved) return;
+  // the tap that ends a drag mustn't also press the button under your finger
+  const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+  sheet.addEventListener('click', swallow, { capture: true, once: true });
+  setTimeout(() => sheet.removeEventListener('click', swallow, { capture: true }), 350);
+  const stops = ['peek', 'half', 'full'];
+  let pick;
+  if (Math.abs(d.v) > 0.45) { // a flick: one stop in its direction
+    const i = stops.indexOf(snap) + (d.v > 0 ? 1 : -1);
+    pick = stops[Math.max(0, Math.min(2, i))];
+  } else { // otherwise wherever it was let go nearest to
+    pick = stops.reduce((a, b) => (Math.abs(snapHeight(b) - d.vis) < Math.abs(snapHeight(a) - d.vis) ? b : a));
+  }
+  setSnap(pick);
+}
+sheet.addEventListener('pointerup', endDrag);
+sheet.addEventListener('pointercancel', endDrag);
+$('.sheet-grip').addEventListener('click', () => setSnap(snap === 'peek' ? 'half' : snap === 'half' ? 'full' : 'peek'));
+
 // ---------- parking spot (kept only on this device) ----------
 const parking = new ParkingSpot(CAMPUS, campus);
 const parkDetector = new ParkDetector(parking, ({ lot }) => {
@@ -1045,6 +1222,8 @@ function openParkSheet() {
   outdoor.setRoute(null); outdoor.setPoints([]); outdoor.focus(null); outdoor.select(null);
   sheetMode('park');
   show('outdoor', { url: '?park=1' });
+  updateBar(null);
+  setSnap('peek', false);
   outdoor.ready.then(() => { startGps(); updateParkSheet(true); });
 }
 
@@ -1081,7 +1260,7 @@ $('#parkSave').onclick = () => {
   const spot = parking.save({ lat, lon, level: parkLevel, note: $('#parkNote').value });
   outdoor.focus(null);
   toast(`Saved: ${describe(spot)}`);
-  back('search');
+  goHome();
 };
 
 function walkToCar() {
@@ -1282,6 +1461,7 @@ if (params.get('to')) {
 } else if (params.get('explore')) {
   openExplore();
 }
+if (screen === 'search') show('search', { push: false });
 renderHome();
 $('#boot').classList.add('hidden');
 
